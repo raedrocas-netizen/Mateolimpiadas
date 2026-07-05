@@ -1,0 +1,521 @@
+# ==========================
+# COLORES INSTITUCIONALES
+# ==========================
+
+COLOR_PRIMARY = "#0A2342"
+COLOR_SECONDARY = "#4EA5D9"
+
+COLOR_BACKGROUND = "#F5F7FA"
+
+COLOR_WHITE = "#FFFFFF"
+
+COLOR_LIGHT_GRAY = "#E5E7EB"
+
+COLOR_DARK_TEXT = "#1F2937"
+
+COLOR_BORDER = "#CBD5E1"
+
+COLOR_READONLY = "#E5E7EB"
+
+COLOR_PREVIEW_BORDER = "#38A3FF"
+
+COLOR_INFO_LIGHT = "#DBEAFE"
+
+COLOR_SUCCESS_LIGHT = "#DCFCE7"
+
+COLOR_WARNING_LIGHT = "#FEF3C7"
+
+COLOR_DANGER_LIGHT = "#FEE2E2"
+
+COLOR_NEW_LIGHT = "#E0F2FE"
+
+COLOR_GOLD_LIGHT = "#FFF8DB"
+
+COLOR_GOLD_GLOW = "#FFF3B0"
+
+
+# ==========================
+# COLORES DE ESTADÍSTICAS
+# ==========================
+
+COLOR_STATISTICS_CANVAS = "#EDF2F7"
+
+COLOR_STATISTICS_CARD_SHADOW = "#CBD5E1"
+
+COLOR_STATISTICS_GOLD = "#D4A017"
+
+COLOR_STATISTICS_SILVER = "#708090"
+
+COLOR_STATISTICS_BRONZE = "#A65E2E"
+
+COLOR_STATISTICS_SAME = "#64748B"
+
+
+# ==========================
+# COLORES DE BOTONES
+# ==========================
+
+COLOR_SAVE = "#15803D"
+
+COLOR_SEARCH = "#2563EB"
+
+COLOR_INFO_BUTTON = COLOR_SEARCH
+
+COLOR_UPDATE = "#1E40AF"
+
+COLOR_DELETE = "#DC2626"
+
+COLOR_REFRESH = "#D97706"
+
+COLOR_QUESTION = "#0F766E"
+
+COLOR_EXIT = "#374151"
+
+
+# ==========================
+# COLORES DE TABLAS
+# ==========================
+
+TREEVIEW_HEADER_BACKGROUND = COLOR_PRIMARY
+
+TREEVIEW_HEADER_FOREGROUND = COLOR_WHITE
+
+TREEVIEW_ROW_BACKGROUND = COLOR_WHITE
+
+TREEVIEW_SELECTED_BACKGROUND = "#BFDBFE"
+
+TREEVIEW_SELECTED_FOREGROUND = COLOR_DARK_TEXT
+
+
+# ==========================
+# FUENTES
+# ==========================
+
+FONT_TITLE = (
+    "Arial",
+    18,
+    "bold"
+)
+
+FONT_SUBTITLE = (
+    "Arial",
+    11,
+    "bold"
+)
+
+FONT_LABEL = (
+    "Arial",
+    10
+)
+
+FONT_ENTRY = (
+    "Arial",
+    10
+)
+
+FONT_BUTTON = (
+    "Arial",
+    10,
+    "bold"
+)
+
+FONT_TREEVIEW = (
+    "Arial",
+    10
+)
+
+FONT_SMALL_BOLD = (
+    "Arial",
+    9,
+    "bold"
+)
+
+FONT_SMALL = (
+    "Arial",
+    9
+)
+
+FONT_SMALL_ITALIC = (
+    "Arial",
+    9,
+    "italic"
+)
+
+FONT_BODY_LARGE = (
+    "Arial",
+    11
+)
+
+FONT_STATISTICS_HEADER = (
+    "Arial",
+    24,
+    "bold"
+)
+
+FONT_STATISTICS_SECTION = (
+    "Arial",
+    20,
+    "bold"
+)
+
+FONT_STATISTICS_COMBOBOX = (
+    "Arial",
+    12
+)
+
+FONT_STATISTICS_GAME_TITLE = (
+    "Arial",
+    17,
+    "bold"
+)
+
+FONT_STATISTICS_STATE = (
+    "Arial",
+    13,
+    "bold"
+)
+
+FONT_STATISTICS_EMPTY = (
+    "Arial",
+    16,
+    "bold"
+)
+
+FONT_STATISTICS_POSITION = (
+    "Arial",
+    22,
+    "bold"
+)
+
+FONT_STATISTICS_SITE = (
+    "Arial",
+    13,
+    "bold"
+)
+
+FONT_STATISTICS_SCORE = (
+    "Arial",
+    19,
+    "bold"
+)
+
+FONT_STATISTICS_PODIUM_TITLE = (
+    "Arial",
+    26,
+    "bold"
+)
+
+FONT_STATISTICS_MEDAL = (
+    "Arial",
+    20,
+    "bold"
+)
+
+FONT_STATISTICS_PLACE = (
+    "Arial",
+    14,
+    "bold"
+)
+
+FONT_STATISTICS_PODIUM_SITE_FIRST = (
+    "Arial",
+    17,
+    "bold"
+)
+
+FONT_STATISTICS_PODIUM_SITE = (
+    "Arial",
+    15,
+    "bold"
+)
+
+FONT_STATISTICS_PODIUM_SCORE = (
+    "Arial",
+    18,
+    "bold"
+)
+
+FONT_PARTICIPANT_QUESTION = (
+    "Arial",
+    16,
+    "bold"
+)
+
+
+# ==========================
+# TAMAÑOS ESTÁNDAR
+# ==========================
+
+WINDOW_WIDTH = 1000
+
+WINDOW_HEIGHT = 700
+
+WINDOW_WIDTH_MENU = 1000
+
+WINDOW_HEIGHT_MENU = 820
+
+WINDOW_HEIGHT_MENU_ADVANCED = 890
+
+ABOUT_WINDOW_WIDTH = 650
+
+ABOUT_WINDOW_HEIGHT = 620
+
+SEARCH_WINDOW_COMPACT_WIDTH = 780
+
+SEARCH_WINDOW_MEDIUM_WIDTH = 900
+
+SEARCH_WINDOW_LARGE_WIDTH = 1080
+
+SEARCH_WINDOW_COMPACT_HEIGHT = 560
+
+SEARCH_WINDOW_MEDIUM_HEIGHT = 610
+
+SEARCH_WINDOW_LARGE_HEIGHT = 660
+
+SEARCH_WINDOW_MIN_WIDTH = 720
+
+SEARCH_WINDOW_MIN_HEIGHT = 520
+
+SEARCH_WINDOW_MAX_WIDTH = 1180
+
+SEARCH_WINDOW_MAX_HEIGHT = 700
+
+SEARCH_COLUMNS_EXTRA_WIDTH = 120
+
+# Alias conservados para compatibilidad.
+SEARCH_WINDOW_WIDTH = SEARCH_WINDOW_MEDIUM_WIDTH
+
+SEARCH_WINDOW_HEIGHT = SEARCH_WINDOW_MEDIUM_HEIGHT
+
+WINDOW_WIDTH_MATERIA = 800
+
+WINDOW_HEIGHT_MATERIA = 600
+
+TITLE_LOGO_WIDTH = 160
+
+TITLE_LOGO_HEIGHT = 46
+
+TITLE_LOGO_PAD_X = 15
+
+MATEOLIMPIADAS_LOGO_MENU_WIDTH = 250
+
+MATEOLIMPIADAS_LOGO_MENU_HEIGHT = 185
+
+MATEOLIMPIADAS_LOGO_PARTIDA_WIDTH = 210
+
+MATEOLIMPIADAS_LOGO_PARTIDA_HEIGHT = 150
+
+MATEOLIMPIADAS_LOGO_LIVE_WIDTH = 230
+
+MATEOLIMPIADAS_LOGO_LIVE_HEIGHT = 165
+
+PETAPA_LOGO_MATERIA_WIDTH = 220
+
+PETAPA_LOGO_MATERIA_HEIGHT = 145
+
+PETAPA_LOGO_CUESTIONARIO_WIDTH = 285
+
+PETAPA_LOGO_CUESTIONARIO_HEIGHT = 190
+
+PETAPA_LOGO_PARTIDA_WIDTH = 210
+
+PETAPA_LOGO_PARTIDA_HEIGHT = 140
+
+PETAPA_LOGO_WAITING_WIDTH = 150
+
+PETAPA_LOGO_WAITING_HEIGHT = 95
+
+PETAPA_LOGO_LIVE_WIDTH = 165
+
+PETAPA_LOGO_LIVE_HEIGHT = 105
+
+# ==========================
+# PADDING
+# ==========================
+
+PAD_X = 10
+
+PAD_Y = 5
+
+FRAME_PADDING = 15
+
+
+# ==========================
+# BOTONES
+# ==========================
+
+BUTTON_WIDTH = 12
+
+BUTTON_HEIGHT = 1
+
+BUTTON_PAD_X = 8
+
+BUTTON_PAD_Y = 4
+
+BUTTON_ICON_SIZE = 20
+
+BUTTON_ICON_SOURCE_SIZE = 24
+
+BUTTON_ICON_WHITE_RGBA = (255, 255, 255, 255)
+
+BUTTON_ICON_TRANSPARENT_RGBA = (0, 0, 0, 0)
+
+STATISTICS_FULLSCREEN_BUTTON_WIDTH = 29
+
+NAV_BUTTON_WIDTH = 5
+
+RECORD_STATUS_WIDTH = 18
+
+
+# ==========================
+# COMBOBOX
+# ==========================
+
+COMBOBOX_WIDTH = 30
+
+
+# ==========================
+# ENTRIES
+# ==========================
+
+ENTRY_WIDTH = 40
+
+
+# ==========================
+# TREEVIEW
+# ==========================
+
+TREEVIEW_HEIGHT = 15
+
+# ==========================
+# TITLES
+# ==========================
+
+FORM_TITLE = (
+    "Sistema de Mate Olimpiadas"
+)
+TITLE_MATERIAS = "Gestión de Materias"
+TITLE_CUESTIONARIOS = (
+    "Gestión de Cuestionarios"
+)
+TITLE_RUTAS_IMAGENES = "Gestión de Rutas de Imágenes"
+INFO_TITLE = "Información"
+
+WARNING_TITLE = "Advertencia"
+
+ERROR_TITLE = "Error"
+
+CONFIRM_TITLE = "Confirmación"
+
+# ==========================
+# MENSAJES
+# ==========================
+
+MESSAGE_SAVE_SUCCESS = "Registro guardado correctamente."
+MESSAGE_UPDATE_SUCCESS = "Registro modificado correctamente."
+MESSAGE_DELETE_SUCCESS = "Registro eliminado correctamente."
+
+MESSAGE_CONFIRM_DELETE = (
+    "¿Desea eliminar el registro seleccionado?"
+)
+
+# ==========================
+# TREEVIEW COLUMNS
+# ==========================
+
+COLUMN_ID_WIDTH = 80
+
+COLUMN_NAME_WIDTH = 350
+
+# ==========================
+# PREGUNTA GUI
+# ==========================
+
+WINDOW_WIDTH_PREGUNTA = 1120
+
+WINDOW_HEIGHT_PREGUNTA = 750
+
+QUESTION_TEXT_WIDTH = 34
+
+QUESTION_TEXT_HEIGHT = 5
+
+QUESTION_IMAGE_PREVIEW_WIDTH = 360
+QUESTION_IMAGE_PREVIEW_HEIGHT = 230
+
+QUESTION_TREEVIEW_HEIGHT = 7
+
+# ==========================
+# RESPUESTA GUI
+# ==========================
+
+WINDOW_WIDTH_RESPUESTA = 1320
+
+WINDOW_HEIGHT_RESPUESTA = 820
+
+ANSWER_TEXT_WIDTH = 24
+
+ANSWER_TEXT_HEIGHT = 5
+
+ANSWER_IMAGE_PREVIEW_WIDTH = 300
+ANSWER_IMAGE_PREVIEW_HEIGHT = 230
+
+ANSWER_TREEVIEW_HEIGHT = 8
+
+ANSWER_QUESTION_PREVIEW_WIDTH = 300
+ANSWER_QUESTION_PREVIEW_HEIGHT = 230
+
+# ==========================
+# RUTA IMAGEN GUI
+# ==========================
+
+WINDOW_WIDTH_RUTA_IMAGEN = 900
+
+WINDOW_HEIGHT_RUTA_IMAGEN = 650
+
+ROUTE_TREEVIEW_HEIGHT = 14
+
+# ==========================
+# PARTIDA GUI
+# ==========================
+
+WINDOW_WIDTH_PARTIDA = 1320
+
+WINDOW_HEIGHT_PARTIDA = 820
+
+WINDOW_WIDTH_PARTIDA_LIVE = 1220
+
+WINDOW_HEIGHT_PARTIDA_LIVE = 870
+
+WINDOW_WIDTH_WAITING_ROOM = 1100
+
+WINDOW_HEIGHT_WAITING_ROOM = 680
+
+WINDOW_WIDTH_STATISTICS = 1280
+
+WINDOW_HEIGHT_STATISTICS = 820
+
+WINDOW_WIDTH_PARTICIPANT_CONNECTION = 700
+
+WINDOW_HEIGHT_PARTICIPANT_CONNECTION = 500
+
+WINDOW_WIDTH_PARTICIPANT_GAME = 1000
+
+WINDOW_HEIGHT_PARTICIPANT_GAME = 760
+
+STATISTICS_RANKING_CARD_HEIGHT = 74
+
+STATISTICS_RANKING_CARD_GAP = 11
+
+STATISTICS_RANKING_TOP_MARGIN = 14
+
+GAME_QUESTION_PREVIEW_WIDTH = 380
+
+GAME_QUESTION_PREVIEW_HEIGHT = 155
+
+GAME_ANSWER_PREVIEW_WIDTH = 380
+
+GAME_ANSWER_PREVIEW_HEIGHT = 185
+
+GAME_TEXT_WIDTH = 44
+
+GAME_TEXT_HEIGHT = 6

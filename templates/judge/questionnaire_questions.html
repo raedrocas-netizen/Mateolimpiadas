@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="dashboard-shell">
+    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold" href="{{ url_for('judge.dashboard') }}">Olimpiadas del Conocimiento</a>
+            <div class="d-flex align-items-center gap-3">
+                <span class="text-secondary">{{ judge_name }}</span>
+                <a href="{{ url_for('judge.dashboard') }}" class="btn btn-sm btn-outline-primary">Dashboard</a>
+                <a href="{{ url_for('judge.logout') }}" class="btn btn-sm btn-outline-secondary">Salir</a>
+            </div>
+        </div>
+    </nav>
+
+    <section class="container-fluid py-4 questionnaire-page" data-questionnaire-id="{{ cuestionario.get_id_cuestionario() }}">
+        <div class="page-heading">
+            <div>
+                <h1>{{ cuestionario.get_nombre() }}</h1>
+                <p>{{ cuestionario.get_materia().get_nombre() }} - {{ cuestionario.get_area() }} - {{ cuestionario.get_estado() }}</p>
+            </div>
+            <button id="newQuestion" class="btn btn-primary">Agregar pregunta</button>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-5">
+                <div class="tool-card">
+                    <h2>Pregunta y respuesta esperada</h2>
+                    <form id="questionDetailForm" class="stack-form">
+                        <input type="hidden" name="id_pregunta">
+                        <input type="hidden" name="id_respuesta">
+                        <input type="hidden" name="id_cuestionario" value="{{ cuestionario.get_id_cuestionario() }}">
+                        <input type="hidden" name="id_ruta_imagen">
+                        <input type="hidden" name="nombre_imagen">
+
+                        <label class="form-label">Texto de la pregunta</label>
+                        <textarea class="form-control" name="enunciado" rows="5" required></textarea>
+
+                        <label class="form-label">Imagen opcional de la pregunta</label>
+                        <input class="form-control" type="file" name="imagen" accept="image/*">
+
+                        <label class="form-label">Respuesta esperada</label>
+                        <textarea class="form-control" name="respuesta_descripcion" rows="4" required></textarea>
+
+                        <input type="hidden" name="respuesta_id_ruta_imagen">
+                        <input type="hidden" name="respuesta_nombre_imagen">
+                        <label class="form-label">Imagen opcional de la respuesta</label>
+                        <input class="form-control" type="file" name="respuesta_imagen" accept="image/*">
+
+                        <button class="btn btn-success">Guardar pregunta</button>
+                        <div id="questionMessage" class="small-message"></div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                <div class="tool-card">
+                    <div class="d-flex justify-content-between align-items-center gap-3">
+                        <h2 class="mb-0">Preguntas del cuestionario</h2>
+                        <span id="questionCount" class="badge text-bg-light">0 preguntas</span>
+                    </div>
+                    <div id="questionsList" class="list-panel wide question-list"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/questionnaire_questions.js') }}"></script>
+{% endblock %}

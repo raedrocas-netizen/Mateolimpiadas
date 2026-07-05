@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="home-screen">
+    <section class="home-panel text-center">
+        <img src="{{ url_for('static', filename='img/logos/mateolimpiadas_logo.png') }}" class="brand-logo" alt="MateOlimpiadas">
+        <h1>Olimpiadas del Conocimiento</h1>
+        <div class="home-actions">
+            <a href="{{ url_for('participant.join') }}" class="btn btn-primary btn-lg">Soy Participante</a>
+            <a href="{{ url_for('judge.login') }}" class="btn btn-outline-primary btn-lg">Soy Juez</a>
+        </div>
+    </section>
+</main>
+{% endblock %}

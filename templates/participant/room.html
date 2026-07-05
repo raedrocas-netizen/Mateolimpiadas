@@ -1,0 +1,39 @@
+﻿{% extends "base.html" %}
+
+{% block body %}
+<main class="competition-shell participant-view">
+    <section class="topbar">
+        <div>
+            <strong id="teamName">Equipo</strong>
+            <span id="roomCode" class="badge text-bg-light"></span>
+        </div>
+        <div id="timer" class="timer">--</div>
+    </section>
+
+    <section class="question-band">
+        <div class="status-pill" id="participantStatus">Sala abierta</div>
+        <h1 id="questionText">Esperando que el juez inicie la competencia.</h1>
+        <img id="questionImage" class="question-image d-none" alt="Imagen de pregunta">
+        <button id="requestWord" class="btn btn-warning request-button" disabled>PEDIR PALABRA</button>
+        <div id="finalActions" class="final-actions d-none">
+            <div id="teamScore" class="score-pill"></div>
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+                <a href="/" class="btn btn-primary">Volver al inicio</a>
+                <a href="/participante/" class="btn btn-outline-primary">Ingresar a otra sala</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="ranking-panel">
+        <h2>Marcador</h2>
+        <div id="podiumTitle" class="text-secondary mb-2 d-none">Podio final</div>
+        <div id="ranking"></div>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/participant_room.js') }}"></script>
+{% endblock %}
+

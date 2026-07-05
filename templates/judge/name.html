@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="auth-screen">
+    <form method="post" class="auth-card">
+        <h1>Nombre del juez</h1>
+        <label class="form-label">¿Quién dirigirá la competencia?</label>
+        <input class="form-control" name="judge_name" required autofocus>
+        <button class="btn btn-primary w-100 mt-4">Continuar</button>
+    </form>
+</main>
+{% endblock %}

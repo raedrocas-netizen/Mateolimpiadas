@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="auth-screen">
+    <form id="joinForm" class="auth-card">
+        <h1>Participante</h1>
+        <label class="form-label">Nombre del equipo</label>
+        <input class="form-control" name="nombre_equipo" required>
+        <label class="form-label mt-3">Integrantes</label>
+        <textarea class="form-control" name="integrantes" rows="3" required></textarea>
+        <label class="form-label mt-3">Sede</label>
+        <select class="form-select" name="sede" id="sede" required></select>
+        <label class="form-label mt-3">Código de sala</label>
+        <input class="form-control code-input" name="codigo_partida" required>
+        <button class="btn btn-primary w-100 mt-4">Unirse</button>
+        <div id="joinMessage" class="small-message mt-3"></div>
+    </form>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/participant_join.js') }}"></script>
+{% endblock %}
