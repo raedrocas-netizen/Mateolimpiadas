@@ -85,25 +85,31 @@ class CuestionarioDao:
         )
         VALUES(
             ?, ?, ?, ?, ?, ?
-        );
+        )
+        RETURNING id_cuestionario;
         """
 
-        result = self.dao.ejecutar_sql(
-            sql,
-            (
-                cuestionario.get_nombre(),
-                cuestionario.get_materia().get_id_materia(),
-                cuestionario.get_area(),
-                cuestionario.get_estado(),
-                cuestionario.get_fecha_creacion(),
-                current_owner()
-            )
-        )
-
-        if result:
+        try:
+            row = self.dao.cursor.execute(
+                sql,
+                (
+                    cuestionario.get_nombre(),
+                    cuestionario.get_materia().get_id_materia(),
+                    cuestionario.get_area(),
+                    cuestionario.get_estado(),
+                    cuestionario.get_fecha_creacion(),
+                    current_owner()
+                )
+            ).fetchone()
+            self.dao.conexion.commit()
             cuestionario.set_id_cuestionario(
-                self.dao.obtener_ultimo_id()
+                row["id_cuestionario"]
             )
+            result = True
+        except Exception as e:
+            self.dao.conexion.rollback()
+            print(f"Error al insertar cuestionario: {e}")
+            result = False
 
         self.dao.cerrar()
 
@@ -138,10 +144,14 @@ class CuestionarioDao:
 
         sql = f"""
         {self._get_base_select()}
+        WHERE c.created_by = ?
         ORDER BY c.id_cuestionario;
         """
 
-        rows = self.dao.obtener_todos(sql)
+        rows = self.dao.obtener_todos(
+            sql,
+            (current_owner(),)
+        )
 
         self.dao.cerrar()
 

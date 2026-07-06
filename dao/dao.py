@@ -1,7 +1,40 @@
 import os
+import threading
+import time
 
 import psycopg2
-from psycopg2.extras import DictCursor
+from psycopg2 import pool
+from psycopg2.extensions import TRANSACTION_STATUS_IDLE
+from psycopg2.extras import DictCursor, execute_values
+
+from helpers.performance import record_metric, record_sql
+
+
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _pool_size(name, default):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_pool(database_url):
+    global _pool
+
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = pool.ThreadedConnectionPool(
+                    _pool_size("DB_POOL_MIN", 1),
+                    _pool_size("DB_POOL_MAX", 12),
+                    database_url,
+                    cursor_factory=DictCursor
+                )
+
+    return _pool
 
 
 class CursorAdapter:
@@ -15,16 +48,35 @@ class CursorAdapter:
 
     def execute(self, sql, parametros=()):
         translated = self._translate_sql(sql)
+        started_at = time.perf_counter()
         self._cursor.execute(translated, parametros)
+        record_sql(translated, time.perf_counter() - started_at)
 
-        if translated.lstrip().upper().startswith("INSERT"):
+        normalized = translated.lstrip().upper()
+
+        if normalized.startswith("INSERT") and " RETURNING " not in normalized:
             try:
+                started_at = time.perf_counter()
                 self._cursor.execute("SELECT LASTVAL();")
+                record_sql("SELECT LASTVAL();", time.perf_counter() - started_at)
                 row = self._cursor.fetchone()
                 self.lastrowid = row[0] if row else None
             except Exception:
                 self.lastrowid = None
 
+        return self
+
+    def executemany(self, sql, parametros):
+        translated = self._translate_sql(sql)
+        started_at = time.perf_counter()
+        self._cursor.executemany(translated, parametros)
+        record_sql(translated, time.perf_counter() - started_at)
+        return self
+
+    def execute_values(self, sql, parametros):
+        started_at = time.perf_counter()
+        execute_values(self._cursor, sql, parametros)
+        record_sql(sql, time.perf_counter() - started_at)
         return self
 
     def fetchone(self):
@@ -59,10 +111,9 @@ class Dao:
             return False
 
         try:
-            self.conexion = psycopg2.connect(
-                database_url,
-                cursor_factory=DictCursor
-            )
+            started_at = time.perf_counter()
+            self.conexion = _get_pool(database_url).getconn()
+            record_metric("DB connection", time.perf_counter() - started_at)
             self.cursor = CursorAdapter(
                 self.conexion.cursor()
             )
@@ -132,9 +183,19 @@ class Dao:
         try:
             if self.cursor:
                 self.cursor.close()
+                self.cursor = None
 
             if self.conexion:
-                self.conexion.close()
+                if not self.conexion.closed:
+                    try:
+                        if self.conexion.get_transaction_status() != TRANSACTION_STATUS_IDLE:
+                            self.conexion.rollback()
+                    except psycopg2.Error:
+                        pass
+
+                    _get_pool(os.getenv("DATABASE_URL")).putconn(self.conexion)
+
+                self.conexion = None
 
         except psycopg2.Error as e:
             print(f"Error al cerrar conexion: {e}")

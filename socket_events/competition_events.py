@@ -8,6 +8,7 @@ from helpers.serializers import (
     partida_to_dict,
     serialize_any
 )
+from helpers.performance import measure, performance_operation, socket_event_performance
 from logical_business.partida_business import PartidaBusiness
 
 
@@ -36,36 +37,41 @@ def live_rooms(game_code):
 
 def emit_live_event(socketio, event, payload, game_code):
     for room in live_rooms(game_code):
-        socketio.emit(event, payload, room=room)
+        with measure("SocketIO"):
+            socketio.emit(event, payload, room=room)
 
 
 def emit_question(socketio, question, game_code):
-    socketio.emit(
-        "mostrar_pregunta",
-        game_question_to_dict(question, include_answer=False),
-        room=game_room(game_code)
-    )
-    socketio.emit(
-        "mostrar_pregunta",
-        game_question_to_dict(question, include_answer=True),
-        room=judge_room(game_code)
-    )
+    with measure("SocketIO"):
+        socketio.emit(
+            "mostrar_pregunta",
+            game_question_to_dict(question, include_answer=False),
+            room=game_room(game_code)
+        )
+    with measure("SocketIO"):
+        socketio.emit(
+            "mostrar_pregunta",
+            game_question_to_dict(question, include_answer=True),
+            room=judge_room(game_code)
+        )
 
 
 def emit_to_judge(socketio, event, payload, game_code):
-    socketio.emit(
-        event,
-        payload,
-        room=judge_room(game_code)
-    )
+    with measure("SocketIO"):
+        socketio.emit(
+            event,
+            payload,
+            room=judge_room(game_code)
+        )
 
 
 def emit_to_participant(socketio, event, payload, participant_code):
-    socketio.emit(
-        event,
-        payload,
-        room=participant_room(participant_code)
-    )
+    with measure("SocketIO"):
+        socketio.emit(
+            event,
+            payload,
+            room=participant_room(participant_code)
+        )
 
 
 def stop_timer(game_code):
@@ -246,17 +252,19 @@ def emit_state(socketio, game_code):
                 include_answer=False
             )
         }
-        socketio.emit(
-            "estado_sala",
-            participant_state,
-            room=game_room(game_code)
-        )
+        with measure("SocketIO"):
+            socketio.emit(
+                "estado_sala",
+                participant_state,
+                room=game_room(game_code)
+            )
 
-        socketio.emit(
-            "estado_sala",
-            judge_state,
-            room=judge_room(game_code)
-        )
+        with measure("SocketIO"):
+            socketio.emit(
+                "estado_sala",
+                judge_state,
+                room=judge_room(game_code)
+            )
 
     return judge_state
 
@@ -337,13 +345,14 @@ def countdown_and_start(socketio, game_code, id_partida):
         )
         socketio.sleep(1)
 
-    business = PartidaBusiness()
-    result = business.start_game(id_partida)
+    with performance_operation("SocketIO iniciar_competencia publicar_pregunta", kind="socket"):
+        business = PartidaBusiness()
+        result = business.start_game(id_partida)
 
-    if result.get_success():
-        emit_question_start(socketio, business, game_code, id_partida, result.get_data())
+        if result.get_success():
+            emit_question_start(socketio, business, game_code, id_partida, result.get_data())
 
-    emit_live_event(socketio, "resultado_accion", business_result_to_dict(result), game_code)
+        emit_live_event(socketio, "resultado_accion", business_result_to_dict(result), game_code)
 
 
 def countdown_and_advance(socketio, game_code, id_partida):
@@ -360,27 +369,31 @@ def countdown_and_advance(socketio, game_code, id_partida):
         )
         socketio.sleep(1)
 
-    business = PartidaBusiness()
-    result = business.advance_question(id_partida)
+    with performance_operation("SocketIO siguiente_pregunta publicar_pregunta", kind="socket"):
+        business = PartidaBusiness()
+        result = business.advance_question(id_partida)
 
-    if result.get_success():
-        emit_question_start(socketio, business, game_code, id_partida, result.get_data())
+        if result.get_success():
+            emit_question_start(socketio, business, game_code, id_partida, result.get_data())
 
-    emit_live_event(socketio, "resultado_accion", business_result_to_dict(result), game_code)
+        emit_live_event(socketio, "resultado_accion", business_result_to_dict(result), game_code)
 
 
 def register_socket_events(socketio):
 
     @socketio.on("juez_unirse")
+    @socket_event_performance("juez_unirse")
     def juez_unirse(data):
         if reject_non_judge():
             return
 
         game_code = str(data.get("codigo_partida", "")).strip().upper()
         join_room(judge_room(game_code))
-        emit("estado_sala", build_live_state(game_code, include_answer=True))
+        with measure("SocketIO"):
+            emit("estado_sala", build_live_state(game_code, include_answer=True))
 
     @socketio.on("participante_unirse")
+    @socket_event_performance("participante_unirse")
     def participante_unirse(data):
         business = PartidaBusiness()
         result = business.join_game(
@@ -396,7 +409,8 @@ def register_socket_events(socketio):
             game_code = data.get("codigo_partida", "").strip().upper()
             join_room(game_room(game_code))
             join_room(participant_room(participant["codigo_participante"]))
-            emit("participante_registrado", payload)
+            with measure("SocketIO"):
+                emit("participante_registrado", payload)
             ranking = serialize_any(business.get_live_ranking(game_code))
             emit_to_judge(
                 socketio,
@@ -408,16 +422,19 @@ def register_socket_events(socketio):
                 game_code
             )
             if ranking is not None:
-                socketio.emit(
-                    "actualizar_puntajes",
-                    ranking,
-                    room=game_room(game_code)
-                )
+                with measure("SocketIO"):
+                    socketio.emit(
+                        "actualizar_puntajes",
+                        ranking,
+                        room=game_room(game_code)
+                    )
 
         else:
-            emit("error_sala", payload)
+            with measure("SocketIO"):
+                emit("error_sala", payload)
 
     @socketio.on("participante_reconectar")
+    @socket_event_performance("participante_reconectar")
     def participante_reconectar(data):
         game_code = str(data.get("codigo_partida", "")).strip().upper()
         code = data.get("codigo_participante")
@@ -430,9 +447,11 @@ def register_socket_events(socketio):
                 "participant_code": code
             }
 
-        emit("estado_sala", build_live_state(game_code))
+        with measure("SocketIO"):
+            emit("estado_sala", build_live_state(game_code))
 
     @socketio.on("disconnect")
+    @socket_event_performance("disconnect")
     def participante_desconectar():
         participant_ref = connected_participants.pop(request.sid, None)
 
@@ -460,13 +479,15 @@ def register_socket_events(socketio):
             )
 
             if ranking is not None:
-                socketio.emit(
-                    "actualizar_puntajes",
-                    ranking,
-                    room=game_room(participant_ref["game_code"])
-                )
+                with measure("SocketIO"):
+                    socketio.emit(
+                        "actualizar_puntajes",
+                        ranking,
+                        room=game_room(participant_ref["game_code"])
+                    )
 
     @socketio.on("iniciar_competencia")
+    @socket_event_performance("iniciar_competencia")
     def iniciar_competencia(data):
         if reject_non_judge():
             return
@@ -486,6 +507,7 @@ def register_socket_events(socketio):
         )
 
     @socketio.on("pedir_palabra")
+    @socket_event_performance("pedir_palabra")
     def pedir_palabra(data):
         business = PartidaBusiness()
         result = business.request_word(
@@ -493,7 +515,8 @@ def register_socket_events(socketio):
             data.get("codigo_participante")
         )
         payload = business_result_to_dict(result)
-        emit("resultado_accion", payload)
+        with measure("SocketIO"):
+            emit("resultado_accion", payload)
 
         if result.get_success():
             game_code = str(data.get("codigo_partida", "")).strip().upper()
@@ -512,6 +535,7 @@ def register_socket_events(socketio):
                 )
 
     @socketio.on("dar_palabra")
+    @socket_event_performance("dar_palabra")
     def dar_palabra(data):
         if reject_non_judge():
             return
@@ -519,7 +543,8 @@ def register_socket_events(socketio):
         business = PartidaBusiness()
         result = business.give_word(int(data.get("id_solicitud")))
         payload = business_result_to_dict(result)
-        emit("resultado_accion", payload)
+        with measure("SocketIO"):
+            emit("resultado_accion", payload)
 
         if result.get_success():
             game_code = str(data.get("codigo_partida", "")).strip().upper()
@@ -534,16 +559,18 @@ def register_socket_events(socketio):
                     request,
                     game_code
                 )
-                socketio.emit(
-                    "estado_palabra",
-                    request,
-                    room=game_room(game_code)
-                )
+                with measure("SocketIO"):
+                    socketio.emit(
+                        "estado_palabra",
+                        request,
+                        room=game_room(game_code)
+                    )
 
             if timer is not None:
                 emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
 
     @socketio.on("respuesta_correcta")
+    @socket_event_performance("respuesta_correcta")
     def respuesta_correcta(data):
         if reject_non_judge():
             return
@@ -551,7 +578,8 @@ def register_socket_events(socketio):
         business = PartidaBusiness()
         result = business.mark_correct(int(data.get("id_solicitud")))
         payload = business_result_to_dict(result)
-        emit("resultado_accion", payload)
+        with measure("SocketIO"):
+            emit("resultado_accion", payload)
 
         if result.get_success():
             game_code = str(data.get("codigo_partida", "")).strip().upper()
@@ -578,6 +606,7 @@ def register_socket_events(socketio):
                 emit_live_event(socketio, "actualizar_puntajes", ranking, game_code)
 
     @socketio.on("respuesta_incorrecta")
+    @socket_event_performance("respuesta_incorrecta")
     def respuesta_incorrecta(data):
         if reject_non_judge():
             return
@@ -585,7 +614,8 @@ def register_socket_events(socketio):
         business = PartidaBusiness()
         result = business.mark_incorrect(int(data.get("id_solicitud")))
         payload = business_result_to_dict(result)
-        emit("resultado_accion", payload)
+        with measure("SocketIO"):
+            emit("resultado_accion", payload)
 
         if result.get_success():
             game_code = str(data.get("codigo_partida", "")).strip().upper()
@@ -614,16 +644,18 @@ def register_socket_events(socketio):
             if timer is not None and request is not None:
                 emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
                 start_timer_from_payload(socketio, game_code, request["id_partida"], timer)
-                socketio.emit(
-                    "estado_competencia",
-                    {
-                        "estado": "Pregunta en curso",
-                        "mensaje": "Los equipos pueden pedir la palabra."
-                    },
-                    room=game_room(game_code)
-                )
+                with measure("SocketIO"):
+                    socketio.emit(
+                        "estado_competencia",
+                        {
+                            "estado": "Pregunta en curso",
+                            "mensaje": "Los equipos pueden pedir la palabra."
+                        },
+                        room=game_room(game_code)
+                    )
 
     @socketio.on("siguiente_pregunta")
+    @socket_event_performance("siguiente_pregunta")
     def siguiente_pregunta(data):
         if reject_non_judge():
             return
@@ -643,6 +675,7 @@ def register_socket_events(socketio):
         )
 
     @socketio.on("finalizar_competencia")
+    @socket_event_performance("finalizar_competencia")
     def finalizar_competencia(data):
         if reject_non_judge():
             return
@@ -655,7 +688,8 @@ def register_socket_events(socketio):
             return
 
         result = business.finish_game(partida.get_id_partida())
-        emit("resultado_accion", business_result_to_dict(result))
+        with measure("SocketIO"):
+            emit("resultado_accion", business_result_to_dict(result))
 
         if result.get_success():
             game_code = partida.get_codigo_partida()

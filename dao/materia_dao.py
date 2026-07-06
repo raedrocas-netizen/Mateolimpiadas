@@ -37,21 +37,27 @@ class MateriaDao:
         )
         VALUES(
             ?, ?
-        );
+        )
+        RETURNING id_materia;
         """
 
-        result = self.dao.ejecutar_sql(
-            sql,
-            (
-                materia.get_nombre(),
-                current_owner()
-            )
-        )
-
-        if result:
+        try:
+            row = self.dao.cursor.execute(
+                sql,
+                (
+                    materia.get_nombre(),
+                    current_owner()
+                )
+            ).fetchone()
+            self.dao.conexion.commit()
             materia.set_id_materia(
-                self.dao.obtener_ultimo_id()
+                row["id_materia"]
             )
+            result = True
+        except Exception as e:
+            self.dao.conexion.rollback()
+            print(f"Error al insertar materia: {e}")
+            result = False
 
         self.dao.cerrar()
 
@@ -88,10 +94,14 @@ class MateriaDao:
         sql = """
         SELECT *
         FROM materias
+        WHERE created_by = ?
         ORDER BY id_materia;
         """
 
-        rows = self.dao.obtener_todos(sql)
+        rows = self.dao.obtener_todos(
+            sql,
+            (current_owner(),)
+        )
 
         self.dao.cerrar()
 

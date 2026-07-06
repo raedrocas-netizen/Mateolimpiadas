@@ -3,6 +3,7 @@ from dao.dao import Dao
 from data_representation.ruta_imagen import RutaImagen
 
 import helper.super_global as sg
+from helpers.ownership import current_owner
 
 
 class RutaImagenDao:
@@ -36,25 +37,33 @@ class RutaImagenDao:
         sql = """
         INSERT INTO rutas_imagenes(
             descripcion,
-            ruta
+            ruta,
+            created_by
         )
         VALUES(
-            ?, ?
-        );
+            ?, ?, ?
+        )
+        RETURNING id_ruta;
         """
 
-        result = self.dao.ejecutar_sql(
-            sql,
-            (
-                ruta_imagen.get_descripcion(),
-                ruta_imagen.get_ruta()
-            )
-        )
-
-        if result:
+        try:
+            row = self.dao.cursor.execute(
+                sql,
+                (
+                    ruta_imagen.get_descripcion(),
+                    ruta_imagen.get_ruta(),
+                    current_owner()
+                )
+            ).fetchone()
+            self.dao.conexion.commit()
             ruta_imagen.set_id_ruta(
-                self.dao.obtener_ultimo_id()
+                row["id_ruta"]
             )
+            result = True
+        except Exception as e:
+            self.dao.conexion.rollback()
+            print(f"Error al insertar ruta de imagen: {e}")
+            result = False
 
         self.dao.cerrar()
 
@@ -114,10 +123,14 @@ class RutaImagenDao:
         sql = """
         SELECT *
         FROM rutas_imagenes
+        WHERE created_by = ?
         ORDER BY descripcion;
         """
 
-        rows = self.dao.obtener_todos(sql)
+        rows = self.dao.obtener_todos(
+            sql,
+            (current_owner(),)
+        )
 
         self.dao.cerrar()
 

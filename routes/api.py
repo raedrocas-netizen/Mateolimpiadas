@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from uuid import uuid4
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, g, jsonify, request, session
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
@@ -26,12 +26,11 @@ from helpers.serializers import (
     serialize_any,
 )
 from helpers.ownership import (
-    assign_owner,
-    filter_owned_entities,
     get_owned_ids,
     is_owned,
     current_owner,
 )
+from helpers.performance import begin_operation, finish_operation, measure_serialization
 from logical_business.cuestionario_business import CuestionarioBusiness
 from logical_business.materia_business import MateriaBusiness
 from logical_business.partida_business import PartidaBusiness
@@ -41,6 +40,28 @@ from logical_business.ruta_imagen_business import RutaImagenBusiness
 
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+@api_bp.before_request
+def start_api_performance():
+    context, token = begin_operation(
+        f"{request.method} {request.path}",
+        kind="api"
+    )
+    g.performance_context = context
+    g.performance_token = token
+
+
+@api_bp.after_request
+def finish_api_performance(response):
+    finish_operation(
+        getattr(g, "performance_context", None),
+        getattr(g, "performance_token", None),
+        status=response.status_code
+    )
+    g.performance_context = None
+    g.performance_token = None
+    return response
 
 
 def payload():
@@ -67,15 +88,28 @@ def current_question_requests(solicitudes, pregunta):
 
 
 def json_result(result, status=200):
-    return jsonify(business_result_to_dict(result)), status
+    with measure_serialization():
+        response = jsonify(business_result_to_dict(result))
+
+    return response, status
+
+
+def json_data(data, status=200):
+    with measure_serialization():
+        response = jsonify(data)
+
+    return response, status
 
 
 def error_json(message, status=400):
-    return jsonify({
-        "success": False,
-        "message": message,
-        "data": None
-    }), status
+    with measure_serialization():
+        response = jsonify({
+            "success": False,
+            "message": message,
+            "data": None
+        })
+
+    return response, status
 
 
 @api_bp.errorhandler(Exception)
@@ -107,7 +141,7 @@ def to_int(value, default):
 
 @api_bp.get("/catalogos")
 def catalogs():
-    return jsonify({
+    return json_data({
         "areas": list(sg.AREAS),
         "estados_cuestionario": list(sg.QUESTIONNAIRE_STATUS),
         "sedes": list(sg.IMB_PC_TEAMS),
@@ -120,13 +154,8 @@ def materias():
     business = MateriaBusiness()
 
     if request.method == "GET":
-        items = filter_owned_entities(
-            business.get_all(),
-            "materias",
-            "id_materia",
-            lambda materia: materia.get_id_materia()
-        )
-        return jsonify([materia_to_dict(item) for item in items])
+        items = business.get_all()
+        return json_data([materia_to_dict(item) for item in items])
 
     data = payload()
     materia = Materia()
@@ -134,7 +163,6 @@ def materias():
     result = business.save(materia)
 
     if result.get_success():
-        assign_owner("materias", "id_materia", materia.get_id_materia())
         return json_result(
             success_result(
                 result.get_message(),
@@ -178,18 +206,13 @@ def cuestionarios():
     business = CuestionarioBusiness()
 
     if request.method == "GET":
-        items = filter_owned_entities(
-            business.get_all(),
-            "cuestionarios",
-            "id_cuestionario",
-            lambda cuestionario: cuestionario.get_id_cuestionario()
-        )
+        items = business.get_all()
         id_materia = request.args.get("id_materia")
         area = request.args.get("area")
 
         if id_materia:
             if not is_owned("materias", "id_materia", int(id_materia)):
-                return jsonify([])
+                return json_data([])
             items = [
                 item
                 for item in items
@@ -202,7 +225,7 @@ def cuestionarios():
                 if item.get_area() == area
             ]
 
-        return jsonify([cuestionario_to_dict(item) for item in items])
+        return json_data([cuestionario_to_dict(item) for item in items])
 
     data = payload()
     id_materia = int(data.get("id_materia", 0))
@@ -220,11 +243,6 @@ def cuestionarios():
     result = business.save(cuestionario)
 
     if result.get_success():
-        assign_owner(
-            "cuestionarios",
-            "id_cuestionario",
-            cuestionario.get_id_cuestionario()
-        )
         return json_result(
             success_result(
                 result.get_message(),
@@ -284,7 +302,7 @@ def cuestionario_preguntas_detalle(id_cuestionario):
         for respuesta in RespuestaBusiness().get_by_cuestionario(id_cuestionario)
     }
 
-    return jsonify([
+    return json_data([
         {
             "pregunta": pregunta_to_dict(pregunta),
             "respuesta": respuesta_to_dict(
@@ -300,22 +318,14 @@ def rutas_imagen():
     business = RutaImagenBusiness()
 
     if request.method == "GET":
-        items = filter_owned_entities(
-            business.get_all(),
-            "rutas_imagenes",
-            "id_ruta",
-            lambda ruta: ruta.get_id_ruta()
-        )
-        return jsonify([ruta_imagen_to_dict(item) for item in items])
+        items = business.get_all()
+        return json_data([ruta_imagen_to_dict(item) for item in items])
 
     data = payload()
     ruta = RutaImagen()
     ruta.set_descripcion(data.get("descripcion", ""))
     ruta.set_ruta(data.get("ruta", ""))
     result = business.save(ruta)
-
-    if result.get_success():
-        assign_owner("rutas_imagenes", "id_ruta", ruta.get_id_ruta())
 
     return json_result(result)
 
@@ -329,7 +339,7 @@ def preguntas():
 
         if id_cuestionario:
             if not is_owned("cuestionarios", "id_cuestionario", int(id_cuestionario)):
-                return jsonify([])
+                return json_data([])
             items = business.get_by_cuestionario(int(id_cuestionario))
         else:
             allowed = set(get_owned_ids("cuestionarios", "id_cuestionario"))
@@ -338,7 +348,7 @@ def preguntas():
                 for item in business.get_all()
                 if item.get_cuestionario().get_id_cuestionario() in allowed
             ]
-        return jsonify([pregunta_to_dict(item) for item in items])
+        return json_data([pregunta_to_dict(item) for item in items])
 
     data = payload()
     id_cuestionario = int(data.get("id_cuestionario", 0))
@@ -427,11 +437,11 @@ def respuestas():
                         pregunta.get_cuestionario().get_id_cuestionario()
                     )
             ):
-                return jsonify(None)
-            return jsonify(respuesta_to_dict(business.get_by_pregunta(int(id_pregunta))))
+                return json_data(None)
+            return json_data(respuesta_to_dict(business.get_by_pregunta(int(id_pregunta))))
 
         allowed = set(get_owned_ids("cuestionarios", "id_cuestionario"))
-        return jsonify([
+        return json_data([
             respuesta_to_dict(item)
             for item in business.get_all()
             if (
@@ -527,12 +537,9 @@ def respuesta_detail(id_respuesta):
 
 @api_bp.get("/partidas")
 def partidas():
-    owned = set(get_owned_ids("partidas", "id_partida"))
-    return jsonify([
-        item
-        for item in serialize_any(PartidaBusiness().get_all_with_summary())
-        if item["id_partida"] in owned
-    ])
+    return json_data(
+        serialize_any(PartidaBusiness().get_all_with_summary(current_owner()))
+    )
 
 
 @api_bp.get("/partidas/generar-codigo")
@@ -578,11 +585,6 @@ def crear_partida():
 
     if result.get_success() and result.get_data() is not None:
         created = result.get_data()
-        assign_owner(
-            "partidas",
-            "id_partida",
-            created.get_id_partida()
-        )
         return json_result(
             success_result(
                 result.get_message(),
@@ -604,19 +606,19 @@ def subir_imagen():
     image = request.files.get("imagen")
 
     if image is None or image.filename == "":
-        return jsonify({
+        return json_data({
             "success": False,
             "message": "Debe seleccionar una imagen."
-        }), 400
+        }, 400)
 
     safe_name = secure_filename(image.filename)
     extension = os.path.splitext(safe_name)[1].lower()
 
     if extension not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
-        return jsonify({
+        return json_data({
             "success": False,
             "message": "Formato de imagen no permitido."
-        }), 400
+        }, 400)
 
     owner_slug = secure_filename(current_owner()) or "global"
     upload_folder = os.path.join(
@@ -647,7 +649,7 @@ def subir_imagen():
             route_result = route_business.save(new_route)
 
             if route_result.get_success():
-                route = route_business.get_by_path(route_path)
+                route = new_route
                 break
 
             route = route_business.get_by_path(route_path)
@@ -671,16 +673,9 @@ def subir_imagen():
             500
         )
 
-    if route is not None:
-        assign_owner(
-            "rutas_imagenes",
-            "id_ruta",
-            route.get_id_ruta()
-        )
-
     image.save(os.path.join(upload_folder, stored_name))
 
-    return jsonify({
+    return json_data({
         "success": True,
         "message": "Imagen cargada correctamente.",
         "data": {
@@ -704,7 +699,7 @@ def estado_partida(id_partida):
         pregunta
     )
 
-    return jsonify({
+    return json_data({
         "partida": partida_to_dict(partida),
         "participantes": serialize_any(business.get_waiting_room_status(id_partida)),
         "pregunta": pregunta,

@@ -367,9 +367,8 @@ class PartidaBusiness:
             )
             return result
 
-        created = self.get_by_id(
-            id_partida
-        )
+        partida.set_id_partida(id_partida)
+        created = partida
 
         result.set_success(True)
         result.set_message(
@@ -650,9 +649,9 @@ class PartidaBusiness:
 
         return self.__partida_dao.get_all()
 
-    def get_all_with_summary(self):
+    def get_all_with_summary(self, owner=None):
 
-        return self.__partida_dao.get_all_with_summary()
+        return self.__partida_dao.get_all_with_summary(owner=owner)
 
     def get_by_estado(
             self,

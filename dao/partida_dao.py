@@ -3,6 +3,7 @@
 from data_representation.partida import Partida
 
 import helper.super_global as sg
+from helpers.ownership import current_owner
 
 from datetime import datetime
 
@@ -421,13 +422,20 @@ class PartidaDao:
 
         return self._rows_to_partidas(rows)
 
-    def get_all_with_summary(self):
+    def get_all_with_summary(self, owner=None):
 
         if not self.dao.conectar():
             return []
 
+        where_owner = ""
+        parametros = ()
+
+        if owner:
+            where_owner = "WHERE p.created_by = ?"
+            parametros = (owner,)
+
         rows = self.dao.obtener_todos(
-            """
+            f"""
             SELECT
                 p.id_partida,
                 p.codigo_partida,
@@ -462,6 +470,7 @@ class PartidaDao:
                 ON pp.id_partida = p.id_partida
             LEFT JOIN participantes pa
                 ON pa.id_partida = p.id_partida
+            {where_owner}
             GROUP BY
                 p.id_partida,
                 p.codigo_partida,
@@ -474,7 +483,8 @@ class PartidaDao:
                 p.penalizacion_incorrecta,
                 p.pregunta_actual
             ORDER BY p.id_partida DESC;
-            """
+            """,
+            parametros
         )
 
         games = [
@@ -1235,11 +1245,13 @@ class PartidaDao:
                     fecha_creacion,
                     tiempo_restante_actual,
                     temporizador_activo_desde,
-                    tiempo_agotado
+                    tiempo_agotado,
+                    created_by
                 )
                 VALUES(
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                );
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                RETURNING id_partida;
                 """,
                 (
                     partida.get_codigo_partida(),
@@ -1253,34 +1265,33 @@ class PartidaDao:
                     partida.get_fecha_creacion(),
                     partida.get_tiempo_restante_actual(),
                     partida.get_temporizador_activo_desde(),
-                    partida.get_tiempo_agotado()
+                    partida.get_tiempo_agotado(),
+                    current_owner()
                 )
-            )
+            ).fetchone()
 
-            id_partida = self.dao.cursor.lastrowid
+            id_partida = row["id_partida"]
 
-            for cuestionario in cuestionarios:
-                self.dao.cursor.execute(
+            if cuestionarios:
+                self.dao.cursor.execute_values(
                     """
                     INSERT INTO partida_cuestionarios(
                         id_partida,
                         id_cuestionario
                     )
-                    VALUES(
-                        ?, ?
-                    );
+                    VALUES %s;
                     """,
-                    (
+                    [
+                        (
                         id_partida,
                         cuestionario.get_id_cuestionario()
-                    )
+                        )
+                        for cuestionario in cuestionarios
+                    ]
                 )
 
-            for index, pregunta in enumerate(
-                    preguntas,
-                    start=1
-            ):
-                self.dao.cursor.execute(
+            if preguntas:
+                self.dao.cursor.execute_values(
                     """
                     INSERT INTO partida_preguntas(
                         id_partida,
@@ -1288,16 +1299,20 @@ class PartidaDao:
                         numero_orden,
                         estado
                     )
-                    VALUES(
-                        ?, ?, ?, ?
-                    );
+                    VALUES %s;
                     """,
-                    (
-                        id_partida,
-                        pregunta.get_id_pregunta(),
-                        index,
-                        sg.GAME_QUESTION_STATUS_PENDING
-                    )
+                    [
+                        (
+                            id_partida,
+                            pregunta.get_id_pregunta(),
+                            index,
+                            sg.GAME_QUESTION_STATUS_PENDING
+                        )
+                        for index, pregunta in enumerate(
+                            preguntas,
+                            start=1
+                        )
+                    ]
                 )
 
             self.dao.conexion.commit()
@@ -1413,20 +1428,67 @@ class PartidaDao:
             id_partida
     ):
 
-        partida = self.get_by_id(
-            id_partida
-        )
-
-        if (
-                partida is None
-                or partida.get_pregunta_actual() <= 0
-        ):
+        if not self.dao.conectar():
             return None
 
-        return self.get_question_by_order(
-            id_partida,
-            partida.get_pregunta_actual()
+        row = self.dao.obtener_uno(
+            """
+            SELECT
+                pp.id_partida_pregunta,
+                pp.id_partida,
+                pp.id_pregunta,
+                pp.numero_orden,
+                pp.estado AS estado,
+                pp.estado AS estado_partida_pregunta,
+
+                p.enunciado,
+                p.nombre_imagen AS nombre_imagen_pregunta,
+
+                c.nombre AS nombre_cuestionario,
+
+                ri.ruta AS ruta_pregunta,
+                ri.descripcion AS descripcion_ruta_pregunta,
+
+                r.descripcion AS respuesta_correcta,
+                r.nombre_imagen AS nombre_imagen_respuesta,
+
+                rir.ruta AS ruta_respuesta,
+                rir.descripcion AS descripcion_ruta_respuesta
+
+            FROM partidas pa
+
+            INNER JOIN partida_preguntas pp
+                ON pp.id_partida = pa.id_partida
+                AND pp.numero_orden = pa.pregunta_actual
+
+            INNER JOIN preguntas p
+                ON pp.id_pregunta = p.id_pregunta
+
+            INNER JOIN cuestionarios c
+                ON p.id_cuestionario = c.id_cuestionario
+
+            LEFT JOIN rutas_imagenes ri
+                ON p.id_ruta_imagen = ri.id_ruta
+
+            LEFT JOIN respuestas r
+                ON p.id_pregunta = r.id_pregunta
+
+            LEFT JOIN rutas_imagenes rir
+                ON r.id_ruta_imagen = rir.id_ruta
+
+            WHERE pa.id_partida = ?
+            AND pa.pregunta_actual > 0
+            LIMIT 1;
+            """,
+            (id_partida,)
         )
+
+        self.dao.cerrar()
+
+        if row is None:
+            return None
+
+        return dict(row)
 
     def get_question_by_order(
             self,

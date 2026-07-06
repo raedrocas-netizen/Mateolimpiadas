@@ -120,7 +120,8 @@ class PreguntaDao:
         )
         VALUES(
             ?, ?, ?, ?
-        );
+        )
+        RETURNING id_pregunta;
         """
 
         id_ruta = None
@@ -132,24 +133,29 @@ class PreguntaDao:
                 .get_id_ruta()
             )
 
-        result = self.dao.ejecutar_sql(
-            sql,
-            (
-                pregunta.get_cuestionario()
-                .get_id_cuestionario(),
+        try:
+            row = self.dao.cursor.execute(
+                sql,
+                (
+                    pregunta.get_cuestionario()
+                    .get_id_cuestionario(),
 
-                pregunta.get_enunciado(),
+                    pregunta.get_enunciado(),
 
-                id_ruta,
+                    id_ruta,
 
-                pregunta.get_nombre_imagen()
-            )
-        )
-
-        if result:
+                    pregunta.get_nombre_imagen()
+                )
+            ).fetchone()
+            self.dao.conexion.commit()
             pregunta.set_id_pregunta(
-                self.dao.obtener_ultimo_id()
+                row["id_pregunta"]
             )
+            result = True
+        except Exception as e:
+            self.dao.conexion.rollback()
+            print(f"Error al insertar pregunta: {e}")
+            result = False
 
         self.dao.cerrar()
 
