@@ -114,19 +114,27 @@ function refreshPartidas() {
 }
 
 function renderPartidas() {
+        const partidaDetails = item => [
+            `Cuestionario: ${escapeHtml(item.cuestionarios || "Sin cuestionario")}`,
+            `Materia: ${escapeHtml(item.materias || "Sin materia")}`,
+            `Nivel: ${escapeHtml(item.area || "")}`,
+            `Estado: ${escapeHtml(item.estado || "")}`,
+            `Participantes: ${item.participantes_conectados || 0}/${item.total_participantes || 0}`
+        ].join("<br>");
+        const openButton = item => `<button class="btn btn-sm btn-primary" onclick="openLive('${item.codigo_partida}')">Abrir</button>`;
         const markup = partidas.map(item => row(
             `${item.codigo_partida} - ${item.nombre}`,
-            [
-                `Cuestionario: ${escapeHtml(item.cuestionarios || "Sin cuestionario")}`,
-                `Materia: ${escapeHtml(item.materias || "Sin materia")}`,
-                `Nivel: ${escapeHtml(item.area || "")}`,
-                `Estado: ${escapeHtml(item.estado || "")}`,
-                `Participantes: ${item.participantes_conectados || 0}/${item.total_participantes || 0}`
-            ].join("<br>"),
-            `<button class="btn btn-sm btn-primary" onclick="openLive('${item.codigo_partida}')">Abrir</button>`
+            partidaDetails(item),
+            `${openButton(item)}
+             <button class="btn btn-sm btn-outline-danger" onclick="deletePartida(${item.id_partida})">Eliminar</button>`
+        )).join("");
+        const historyMarkup = partidas.map(item => row(
+            `${item.codigo_partida} - ${item.nombre}`,
+            partidaDetails(item),
+            openButton(item)
         )).join("");
         $("#partidasList").innerHTML = markup || "<div class='text-secondary'>No hay partidas creadas.</div>";
-        $("#historyList").innerHTML = markup || "<div class='text-secondary'>No hay historial disponible.</div>";
+        $("#historyList").innerHTML = historyMarkup || "<div class='text-secondary'>No hay historial disponible.</div>";
 }
 
 function bindForm(selector, url, afterSave = refreshAll) {
@@ -174,6 +182,23 @@ function deleteCuestionario(id) {
         setMessage(message, payload.message || "Cuestionario eliminado correctamente.", true);
     }).catch(() => {
         setMessage(message, "No fue posible eliminar el cuestionario.", false);
+    });
+}
+
+function deletePartida(id) {
+    const message = $("#partidasMessage");
+    setMessage(message, "Eliminando partida...", true);
+    apiFetch(`/api/partidas/${id}`, {method: "DELETE"}).then(payload => {
+        if (!payload.success) {
+            setMessage(message, payload.message || "No fue posible eliminar la partida.", false);
+            return;
+        }
+
+        partidas = partidas.filter(item => Number(item.id_partida) !== Number(id));
+        renderPartidas();
+        setMessage(message, payload.message || "Partida eliminada correctamente.", true);
+    }).catch(() => {
+        setMessage(message, "No fue posible eliminar la partida.", false);
     });
 }
 

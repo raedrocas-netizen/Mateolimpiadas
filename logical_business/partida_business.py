@@ -378,6 +378,39 @@ class PartidaBusiness:
 
         return result
 
+    def delete_game(
+            self,
+            id_partida
+    ):
+
+        result = BusinessResult()
+
+        delete_result = (
+            self.__partida_dao
+            .delete_game_transaction(
+                id_partida
+            )
+        )
+
+        if delete_result.get("success"):
+            result.set_success(True)
+            result.set_message(
+                "Partida eliminada correctamente."
+            )
+            result.set_data(
+                delete_result.get("deleted", {})
+            )
+            return result
+
+        result.set_message(
+            delete_result.get(
+                "message",
+                "No fue posible eliminar la partida."
+            )
+        )
+
+        return result
+
     def get_allowed_next_states(
             self,
             current_state

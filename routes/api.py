@@ -609,6 +609,18 @@ def crear_partida():
     return json_result(result)
 
 
+@api_bp.delete("/partidas/<int:id_partida>")
+def eliminar_partida(id_partida):
+    if not is_owned("partidas", "id_partida", id_partida):
+        return error_json("La partida no pertenece a este juez.", 403)
+
+    result = PartidaBusiness().delete_game(id_partida)
+    return json_result(
+        result,
+        200 if result.get_success() else 409
+    )
+
+
 @api_bp.post("/imagenes")
 def subir_imagen():
     image = request.files.get("imagen")

@@ -1333,6 +1333,115 @@ class PartidaDao:
 
             return None
 
+    def delete_game_transaction(
+            self,
+            id_partida
+    ):
+
+        if not self.dao.conectar():
+            return {
+                "success": False,
+                "message": "No fue posible conectar con la base de datos."
+            }
+
+        try:
+
+            self.dao.cursor.execute(
+                "BEGIN"
+            )
+
+            partida = self.dao.cursor.execute(
+                """
+                SELECT id_partida
+                FROM partidas
+                WHERE id_partida = ?;
+                """,
+                (id_partida,)
+            ).fetchone()
+
+            if partida is None:
+                self.dao.conexion.rollback()
+                self.dao.cerrar()
+                return {
+                    "success": False,
+                    "message": "La partida no existe."
+                }
+
+            deleted = {}
+
+            for table_name, sql in (
+                    (
+                        "respuestas_partida",
+                        """
+                        DELETE FROM respuestas_partida
+                        WHERE id_partida = ?;
+                        """
+                    ),
+                    (
+                        "solicitudes_palabra",
+                        """
+                        DELETE FROM solicitudes_palabra
+                        WHERE id_partida = ?;
+                        """
+                    ),
+                    (
+                        "participantes",
+                        """
+                        DELETE FROM participantes
+                        WHERE id_partida = ?;
+                        """
+                    ),
+                    (
+                        "partida_preguntas",
+                        """
+                        DELETE FROM partida_preguntas
+                        WHERE id_partida = ?;
+                        """
+                    ),
+                    (
+                        "partida_cuestionarios",
+                        """
+                        DELETE FROM partida_cuestionarios
+                        WHERE id_partida = ?;
+                        """
+                    ),
+                    (
+                        "partidas",
+                        """
+                        DELETE FROM partidas
+                        WHERE id_partida = ?;
+                        """
+                    )
+            ):
+                self.dao.cursor.execute(
+                    sql,
+                    (id_partida,)
+                )
+                deleted[table_name] = self.dao.cursor.rowcount
+
+            self.dao.conexion.commit()
+            self.dao.cerrar()
+
+            return {
+                "success": True,
+                "deleted": deleted
+            }
+
+        except Exception as e:
+
+            self.dao.conexion.rollback()
+
+            print(
+                f"Error al eliminar partida: {e}"
+            )
+
+            self.dao.cerrar()
+
+            return {
+                "success": False,
+                "message": "No fue posible eliminar la partida."
+            }
+
     def get_total_questions(
             self,
             id_partida
