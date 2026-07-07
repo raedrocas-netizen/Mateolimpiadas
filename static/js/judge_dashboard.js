@@ -63,7 +63,7 @@ function refreshMaterias() {
 function renderMaterias() {
         $("#materiasList").innerHTML = materias.map(item => row(item.nombre, `ID ${item.id_materia}`, `
             <button class="btn btn-sm btn-outline-secondary" onclick="editMateria(${item.id_materia}, '${escapeHtml(item.nombre)}')">Editar</button>
-            <button class="btn btn-sm btn-outline-danger" onclick="deleteItem('/api/materias/${item.id_materia}')">Eliminar</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteMateria(${item.id_materia})">Eliminar</button>
         `)).join("");
         document.querySelectorAll('select[name="id_materia"]').forEach(select => {
             select.innerHTML = optionList(materias, "id_materia", "nombre");
@@ -82,7 +82,7 @@ function renderCuestionarios() {
             item.nombre,
             `${escapeHtml(item.materia?.nombre || "")} - ${escapeHtml(item.area)} - ${escapeHtml(item.estado)}`,
             `<a class="btn btn-sm btn-primary" href="/juez/cuestionario/${item.id_cuestionario}/preguntas">Preguntas</a>
-             <button class="btn btn-sm btn-outline-danger" onclick="deleteItem('/api/cuestionarios/${item.id_cuestionario}')">Eliminar</button>`
+             <button class="btn btn-sm btn-outline-danger" onclick="deleteCuestionario(${item.id_cuestionario})">Eliminar</button>`
         )).join("");
         document.querySelectorAll('select[name="id_cuestionario"], select[name="id_cuestionarios"]').forEach(select => {
             select.innerHTML = optionList(cuestionarios, "id_cuestionario", "nombre");
@@ -143,8 +143,38 @@ function bindForm(selector, url, afterSave = refreshAll) {
     });
 }
 
-function deleteItem(url) {
-    apiFetch(url, {method: "DELETE"}).then(refreshAll);
+function deleteMateria(id) {
+    const message = $("#materiaMessage");
+    setMessage(message, "Eliminando materia...", true);
+    apiFetch(`/api/materias/${id}`, {method: "DELETE"}).then(payload => {
+        if (!payload.success) {
+            setMessage(message, payload.message || "No fue posible eliminar la materia.", false);
+            return;
+        }
+
+        materias = materias.filter(item => item.id_materia !== id);
+        renderMaterias();
+        setMessage(message, payload.message || "Materia eliminada correctamente.", true);
+    }).catch(() => {
+        setMessage(message, "No fue posible eliminar la materia.", false);
+    });
+}
+
+function deleteCuestionario(id) {
+    const message = $("#cuestionarioMessage");
+    setMessage(message, "Eliminando cuestionario...", true);
+    apiFetch(`/api/cuestionarios/${id}`, {method: "DELETE"}).then(payload => {
+        if (!payload.success) {
+            setMessage(message, payload.message || "No fue posible eliminar el cuestionario.", false);
+            return;
+        }
+
+        cuestionarios = cuestionarios.filter(item => item.id_cuestionario !== id);
+        renderCuestionarios();
+        setMessage(message, payload.message || "Cuestionario eliminado correctamente.", true);
+    }).catch(() => {
+        setMessage(message, "No fue posible eliminar el cuestionario.", false);
+    });
 }
 
 function editMateria(id, nombre) {

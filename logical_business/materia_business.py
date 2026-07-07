@@ -96,6 +96,12 @@ class MateriaBusiness:
 
         result = BusinessResult()
 
+        if self.__materia_dao.count_questionnaires(id_materia) > 0:
+            result.set_message(
+                "No se puede eliminar la materia porque tiene cuestionarios asociados."
+            )
+            return result
+
         if self.__materia_dao.delete(id_materia):
 
             result.set_success(True)

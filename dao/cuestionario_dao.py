@@ -215,6 +215,27 @@ class CuestionarioDao:
 
         return result
 
+    def count_games_using_questionnaire(self, id_cuestionario):
+
+        if not self.dao.conectar():
+            return 0
+
+        row = self.dao.obtener_uno(
+            """
+            SELECT COUNT(DISTINCT id_partida)
+            FROM partida_cuestionarios
+            WHERE id_cuestionario = ?;
+            """,
+            (id_cuestionario,)
+        )
+
+        self.dao.cerrar()
+
+        if row is None:
+            return 0
+
+        return row[0]
+
     def get_by_name(self, nombre):
 
         if not self.dao.conectar():

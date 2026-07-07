@@ -184,6 +184,14 @@ class CuestionarioBusiness:
 
         result = BusinessResult()
 
+        if self.__cuestionario_dao.count_games_using_questionnaire(
+                id_cuestionario
+        ) > 0:
+            result.set_message(
+                "No se puede eliminar el cuestionario porque esta siendo utilizado por una partida."
+            )
+            return result
+
         if self.__cuestionario_dao.delete(
             id_cuestionario
         ):

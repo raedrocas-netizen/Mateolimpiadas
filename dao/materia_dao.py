@@ -156,6 +156,27 @@ class MateriaDao:
 
         return result
 
+    def count_questionnaires(self, id_materia):
+
+        if not self.dao.conectar():
+            return 0
+
+        row = self.dao.obtener_uno(
+            """
+            SELECT COUNT(*)
+            FROM cuestionarios
+            WHERE id_materia = ?;
+            """,
+            (id_materia,)
+        )
+
+        self.dao.cerrar()
+
+        if row is None:
+            return 0
+
+        return row[0]
+
     def get_by_name(self, nombre):
 
         if not self.dao.conectar():

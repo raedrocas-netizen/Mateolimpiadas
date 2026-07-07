@@ -180,7 +180,11 @@ def materia_detail(id_materia):
     if request.method == "DELETE":
         if not is_owned("materias", "id_materia", id_materia):
             return error_json("La materia no pertenece a este juez.", 403)
-        return json_result(business.delete(id_materia))
+        result = business.delete(id_materia)
+        return json_result(
+            result,
+            200 if result.get_success() else 409
+        )
 
     data = payload()
     materia = Materia()
@@ -260,7 +264,11 @@ def cuestionario_detail(id_cuestionario):
     if request.method == "DELETE":
         if not is_owned("cuestionarios", "id_cuestionario", id_cuestionario):
             return error_json("El cuestionario no pertenece a este juez.", 403)
-        return json_result(business.delete(id_cuestionario))
+        result = business.delete(id_cuestionario)
+        return json_result(
+            result,
+            200 if result.get_success() else 409
+        )
 
     data = payload()
     if not is_owned("cuestionarios", "id_cuestionario", id_cuestionario):
