@@ -1231,7 +1231,7 @@ class PartidaDao:
                 "BEGIN"
             )
 
-            self.dao.cursor.execute(
+            row = self.dao.cursor.execute(
                 """
                 INSERT INTO partidas(
                     codigo_partida,
@@ -1283,8 +1283,8 @@ class PartidaDao:
                     """,
                     [
                         (
-                        id_partida,
-                        cuestionario.get_id_cuestionario()
+                            id_partida,
+                            cuestionario.get_id_cuestionario()
                         )
                         for cuestionario in cuestionarios
                     ]
