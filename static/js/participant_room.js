@@ -17,6 +17,18 @@ if (participantSession.codigo_partida) {
     socket.emit("participante_reconectar", participantSession);
 }
 
+function renderParticipantTimer(timer, duration = null) {
+    renderTimer(
+        document.getElementById("timer"),
+        {
+            ...(timer || {}),
+            duration
+        },
+        document.getElementById("participantTimerProgress")
+    );
+    handleTimerSound(timer, "participant");
+}
+
 function setParticipantStatus(status, message) {
     statusEl.textContent = status || "Sala abierta";
     questionText.textContent = message || "Esperando que el juez inicie la competencia.";
@@ -57,6 +69,7 @@ function renderParticipantQuestion(question) {
 }
 
 requestButton.addEventListener("click", () => {
+    playSound("request");
     hasRequestedForQuestion = true;
     requestButton.disabled = true;
     statusEl.textContent = "Solicitud enviada";
@@ -64,7 +77,7 @@ requestButton.addEventListener("click", () => {
 });
 
 socket.on("estado_sala", state => {
-    renderTimer(document.getElementById("timer"), state.timer);
+    renderParticipantTimer(state.timer, state.partida?.tiempo_por_pregunta);
     renderRanking(rankingEl, state.ranking);
 
     if (state.estado_competencia === "Esperando respuesta") {
@@ -115,6 +128,8 @@ socket.on("estado_sala", state => {
 });
 
 socket.on("mostrar_pregunta", question => {
+    playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
+    resetTimerSound("participant");
     hasRequestedForQuestion = false;
     renderParticipantQuestion(question);
     statusEl.textContent = "Pregunta en curso";
@@ -125,6 +140,10 @@ socket.on("mostrar_pregunta", question => {
 });
 
 socket.on("estado_competencia", event => {
+    if (event.contador === 5) {
+        playSound("countdown");
+    }
+
     if (event.estado === "Pregunta en curso") {
         requestButton.disabled = hasRequestedForQuestion;
         statusEl.textContent = "Pregunta en curso";
@@ -137,7 +156,7 @@ socket.on("estado_competencia", event => {
 });
 
 socket.on("actualizar_cronometro", timer => {
-    renderTimer(document.getElementById("timer"), timer);
+    renderParticipantTimer(timer);
     if (timer?.exhausted) {
         requestButton.disabled = true;
         statusEl.textContent = "Tiempo agotado";
@@ -146,6 +165,7 @@ socket.on("actualizar_cronometro", timer => {
 
 socket.on("habilitar_respuesta", request => {
     if (request.codigo_participante === participantSession.codigo_participante) {
+        playSound("turn");
         hasRequestedForQuestion = true;
         showTurnMessage(
             "Tienen la palabra",
@@ -155,6 +175,7 @@ socket.on("habilitar_respuesta", request => {
 });
 
 socket.on("estado_palabra", request => {
+    playSound("turn");
     if (request.codigo_participante === participantSession.codigo_participante) {
         hasRequestedForQuestion = true;
         showTurnMessage(
@@ -178,6 +199,7 @@ socket.on("resultado_respuesta", payload => {
     }
 
     const correct = request.estado === "CORRECTA";
+    playSound(correct ? "correct" : "incorrect");
     hasRequestedForQuestion = true;
     statusEl.textContent = correct ? "Respuesta correcta" : "Respuesta incorrecta";
     questionText.textContent = correct
@@ -191,6 +213,7 @@ socket.on("actualizar_puntajes", ranking => {
 });
 
 socket.on("mostrar_podio", ranking => {
+    playSound("finish");
     questionText.textContent = "Competencia finalizada";
     statusEl.textContent = "Podio final";
     showFinalPodium(ranking);

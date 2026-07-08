@@ -7,7 +7,12 @@
             <strong id="teamName">Equipo</strong>
             <span id="roomCode" class="badge text-bg-light"></span>
         </div>
-        <div id="timer" class="timer">--</div>
+        <div class="timer-stack">
+            <div id="timer" class="timer">--</div>
+            <div class="timer-progress" aria-hidden="true">
+                <div id="participantTimerProgress" class="timer-progress-bar"></div>
+            </div>
+        </div>
     </section>
 
     <section class="question-band">

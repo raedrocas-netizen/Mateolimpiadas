@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="display-screen">
+    <section id="displayJoinPanel" class="auth-screen">
+        <form id="displayForm" class="auth-card">
+            <h1>Pantalla Publica</h1>
+            <p class="text-secondary">Ingresa el codigo de sala para mostrar la competencia al publico.</p>
+            <label class="form-label">Codigo de sala</label>
+            <input id="displayCodeInput" class="form-control code-input" name="codigo_partida" required>
+            <button class="btn btn-primary w-100 mt-4">Conectar pantalla</button>
+            <div id="displayJoinMessage" class="small-message mt-3"></div>
+        </form>
+    </section>
+
+    <section id="displayLivePanel" class="display-live d-none">
+        <header class="display-header">
+            <div>
+                <small>Olimpiadas del Conocimiento</small>
+                <h1 id="displayGameName">Competencia</h1>
+            </div>
+            <div class="display-room-code">
+                <span>Codigo</span>
+                <strong id="displayRoomCode">--</strong>
+            </div>
+        </header>
+
+        <section class="display-main">
+            <article class="display-question-panel">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div id="displayStatus" class="status-pill">Sala abierta</div>
+                    <div id="displayQuestionNumber" class="question-counter">Pregunta -- / --</div>
+                </div>
+                <h2 id="displayQuestionText">Esperando que el juez inicie la competencia.</h2>
+                <img id="displayQuestionImage" class="display-question-image d-none" alt="Imagen de pregunta">
+                <div id="displayWordStatus" class="display-word-status">Esperando que un equipo solicite la palabra...</div>
+            </article>
+
+            <aside class="display-side-panel">
+                <div class="display-timer-card">
+                    <div id="displayTimer" class="timer display-timer">--</div>
+                    <div class="timer-progress mt-3" aria-hidden="true">
+                        <div id="displayTimerProgress" class="timer-progress-bar"></div>
+                    </div>
+                </div>
+                <div class="display-ranking-card">
+                    <h2>Tabla de posiciones</h2>
+                    <div id="displayRanking" class="list-panel"></div>
+                </div>
+            </aside>
+        </section>
+
+        <section id="displayPodiumPanel" class="display-podium d-none">
+            <h2>Podio final</h2>
+            <div id="displayPodium"></div>
+            <a href="/display" class="btn btn-outline-primary mt-3">Conectar otra sala</a>
+        </section>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/display.js') }}"></script>
+{% endblock %}

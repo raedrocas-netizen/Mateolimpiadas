@@ -5,6 +5,7 @@ let liveParticipants = [];
 let liveRequests = [];
 let liveState = {};
 let liveQuestionId = null;
+let liveTotalQuestions = null;
 let materias = [];
 let cuestionarios = [];
 let partidas = [];
@@ -495,11 +496,18 @@ function renderImage(target, url) {
     }
 }
 
+function updateQuestionCounter(target, question = null, total = liveTotalQuestions) {
+    const current = question?.numero_orden || liveState?.ranking?.current_question || "--";
+    const max = total || liveState?.ranking?.total_questions || "--";
+    target.textContent = `Pregunta ${current || "--"} / ${max || "--"}`;
+}
+
 function renderJudgeQuestion(question, fallback = "Esperando que el juez inicie la competencia.") {
     $("#judgeQuestion").textContent = question?.enunciado || fallback;
     $("#judgeAnswer").textContent = question?.respuesta_correcta || "Sin respuesta cargada.";
     renderImage($("#judgeQuestionImage"), question?.imagen);
     renderImage($("#judgeAnswerImage"), question?.imagen_respuesta);
+    updateQuestionCounter($("#judgeQuestionNumber"), question);
 }
 
 function giveWord(id) {
@@ -533,12 +541,21 @@ judgeSocket.on("estado_sala", state => {
 
     liveState = state;
     liveQuestionId = stateQuestionId;
+    liveTotalQuestions = state.ranking?.total_questions || liveTotalQuestions;
     liveParticipants = state.participantes || [];
     liveRequests = shouldMergeRequests
         ? mergeRequests(filterRequestsForQuestion(liveRequests, stateQuestionId), stateRequests)
         : sortRequests(stateRequests);
     renderCompetitionStatus(state);
-    renderTimer($("#judgeTimer"), state.timer);
+    renderTimer(
+        $("#judgeTimer"),
+        {
+            ...(state.timer || {}),
+            duration: state.partida?.tiempo_por_pregunta
+        },
+        $("#judgeTimerProgress")
+    );
+    handleTimerSound(state.timer, "judge");
     renderRanking($("#judgeRanking"), state.ranking);
     renderRequests(liveRequests, state);
     renderParticipants(liveParticipants);
@@ -581,6 +598,7 @@ judgeSocket.on("participante_desconectado", payload => {
 });
 
 judgeSocket.on("solicitud_palabra", payload => {
+    playSound("request");
     const request = payload?.request || payload;
     const queue = payload?.queue;
     const requestQuestionId = request?.id_partida_pregunta || liveQuestionId;
@@ -615,6 +633,7 @@ judgeSocket.on("solicitud_palabra", payload => {
 });
 
 judgeSocket.on("palabra_otorgada", request => {
+    playSound("turn");
     liveState = {
         ...liveState,
         estado_competencia: "Esperando respuesta",
@@ -638,6 +657,7 @@ judgeSocket.on("respuesta_calificada", payload => {
     }
 
     const correct = request.estado === "CORRECTA";
+    playSound(correct ? "correct" : "incorrect");
     liveState = {
         ...liveState,
         estado_competencia: correct ? "Respuesta correcta" : "Respuesta incorrecta",
@@ -675,10 +695,13 @@ judgeSocket.on("respuesta_calificada", payload => {
 });
 
 judgeSocket.on("actualizar_puntajes", ranking => {
+    liveTotalQuestions = ranking?.total_questions || liveTotalQuestions;
     renderRanking($("#judgeRanking"), ranking);
+    updateQuestionCounter($("#judgeQuestionNumber"));
 });
 
 judgeSocket.on("mostrar_podio", ranking => {
+    playSound("finish");
     liveState = {
         ...liveState,
         estado_competencia: "Competencia finalizada",
@@ -689,14 +712,22 @@ judgeSocket.on("mostrar_podio", ranking => {
     renderJudgeQuestion(null, "Competencia finalizada.");
 });
 
-judgeSocket.on("actualizar_cronometro", timer => renderTimer($("#judgeTimer"), timer));
+judgeSocket.on("actualizar_cronometro", timer => {
+    renderTimer($("#judgeTimer"), timer, $("#judgeTimerProgress"));
+    handleTimerSound(timer, "judge");
+});
 
 judgeSocket.on("estado_competencia", event => {
+    if (event.contador === 5) {
+        playSound("countdown");
+    }
     renderCompetitionStatus(event);
     renderJudgeQuestion(null, event.contador ? `${event.mensaje}` : event.mensaje);
 });
 
 judgeSocket.on("mostrar_pregunta", question => {
+    playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
+    resetTimerSound("judge");
     liveQuestionId = question?.id_partida_pregunta || null;
     liveRequests = [];
     renderRequests(liveRequests, {

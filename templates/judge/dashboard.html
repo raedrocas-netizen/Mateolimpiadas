@@ -111,9 +111,15 @@
                         <div class="status-pill mt-3" id="judgeCompetitionStatus">Sala sin abrir</div>
                         <div class="small-message mt-2" id="judgeCompetitionMessage">Abre una sala para ver su estado.</div>
                         <div class="timer mt-3" id="judgeTimer">--</div>
+                        <div class="timer-progress mt-2" aria-hidden="true">
+                            <div id="judgeTimerProgress" class="timer-progress-bar"></div>
+                        </div>
                     </div>
                     <div class="tool-card">
-                        <h2>Pregunta actual</h2>
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                            <h2 class="mb-0">Pregunta actual</h2>
+                            <span id="judgeQuestionNumber" class="question-counter">Pregunta -- / --</span>
+                        </div>
                         <div id="judgeQuestion" class="question-preview">Sin sala abierta.</div>
                         <img id="judgeQuestionImage" class="judge-live-image d-none" alt="Imagen de pregunta">
                         <div class="answer-preview mt-3">

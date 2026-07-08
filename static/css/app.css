@@ -146,6 +146,51 @@ body {
     font-weight: 800;
 }
 
+.timer-stack {
+    display: grid;
+    gap: 6px;
+    justify-items: end;
+}
+
+.timer-progress {
+    width: min(180px, 100%);
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #dbeafe;
+}
+
+.timer-progress-bar {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--blue);
+    transition: width 0.25s ease, background-color 0.2s ease;
+}
+
+.timer-progress-warning {
+    background: var(--gold);
+    animation: softPulse 1s ease-in-out infinite;
+}
+
+.timer-progress-ended {
+    background: var(--red);
+}
+
+.question-counter {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    background: #f8fafc;
+    color: var(--muted);
+    font-size: 0.88rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
 .question-preview,
 .question-band {
     border: 1px solid var(--line);
@@ -238,6 +283,152 @@ body {
     font-size: 1.1rem;
 }
 
+.display-screen {
+    min-height: 100%;
+}
+
+.display-live {
+    min-height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 18px;
+    padding: 18px;
+}
+
+.display-header,
+.display-question-panel,
+.display-side-panel > *,
+.display-podium {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.display-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 18px 22px;
+}
+
+.display-header small {
+    color: var(--muted);
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.display-header h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3vw, 2.4rem);
+}
+
+.display-room-code {
+    display: grid;
+    justify-items: end;
+    gap: 2px;
+}
+
+.display-room-code span {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.display-room-code strong {
+    font-size: clamp(1.4rem, 4vw, 2.4rem);
+    letter-spacing: 0.08em;
+}
+
+.display-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    gap: 18px;
+}
+
+.display-question-panel {
+    display: grid;
+    align-content: center;
+    gap: 22px;
+    padding: clamp(20px, 4vw, 42px);
+}
+
+.display-question-panel h2 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 5rem);
+    line-height: 1.08;
+}
+
+.display-question-image {
+    width: 100%;
+    max-height: 48vh;
+    object-fit: contain;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.display-word-status {
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    padding: 16px 18px;
+    color: var(--muted);
+    font-size: clamp(1.05rem, 2vw, 1.45rem);
+    font-weight: 800;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.display-word-active {
+    background: #dcfce7;
+    color: #166534;
+    transform: scale(1.01);
+}
+
+.display-side-panel {
+    display: grid;
+    gap: 18px;
+    align-content: start;
+}
+
+.display-timer-card,
+.display-ranking-card,
+.display-podium {
+    padding: 18px;
+}
+
+.display-timer-card {
+    display: grid;
+    justify-items: center;
+}
+
+.display-timer {
+    width: min(220px, 100%);
+    height: 110px;
+    font-size: clamp(2.4rem, 6vw, 4.6rem);
+}
+
+.display-ranking-card h2,
+.display-podium h2 {
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+}
+
+.display-podium {
+    padding: 22px;
+}
+
+@keyframes softPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.55;
+    }
+}
+
 .app-footer {
     flex-shrink: 0;
     border-top: 1px solid var(--line);
@@ -328,5 +519,18 @@ body {
 
     .control-panel {
         grid-row: auto;
+    }
+
+    .display-main {
+        grid-template-columns: 1fr;
+    }
+
+    .display-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .display-room-code {
+        justify-items: start;
     }
 }

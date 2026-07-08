@@ -24,6 +24,10 @@ def judge_room(game_code):
     return f"judge:{str(game_code).strip().upper()}"
 
 
+def display_room(game_code):
+    return f"display:{str(game_code).strip().upper()}"
+
+
 def participant_room(participant_code):
     return f"participant:{participant_code}"
 
@@ -40,13 +44,29 @@ def emit_live_event(socketio, event, payload, game_code):
         with measure("SocketIO"):
             socketio.emit(event, payload, room=room)
 
+    if event in (
+            "actualizar_cronometro",
+            "estado_competencia",
+            "actualizar_puntajes",
+            "mostrar_podio"
+    ):
+        with measure("SocketIO"):
+            socketio.emit(event, payload, room=display_room(game_code))
+
 
 def emit_question(socketio, question, game_code):
+    public_question = game_question_to_dict(question, include_answer=False)
     with measure("SocketIO"):
         socketio.emit(
             "mostrar_pregunta",
-            game_question_to_dict(question, include_answer=False),
+            public_question,
             room=game_room(game_code)
+        )
+    with measure("SocketIO"):
+        socketio.emit(
+            "mostrar_pregunta",
+            public_question,
+            room=display_room(game_code)
         )
     with measure("SocketIO"):
         socketio.emit(
@@ -62,6 +82,15 @@ def emit_to_judge(socketio, event, payload, game_code):
             event,
             payload,
             room=judge_room(game_code)
+        )
+
+
+def emit_to_display(socketio, event, payload, game_code):
+    with measure("SocketIO"):
+        socketio.emit(
+            event,
+            payload,
+            room=display_room(game_code)
         )
 
 
@@ -266,6 +295,13 @@ def emit_state(socketio, game_code):
                 room=judge_room(game_code)
             )
 
+        with measure("SocketIO"):
+            socketio.emit(
+                "estado_sala",
+                participant_state,
+                room=display_room(game_code)
+            )
+
     return judge_state
 
 
@@ -392,6 +428,24 @@ def register_socket_events(socketio):
         with measure("SocketIO"):
             emit("estado_sala", build_live_state(game_code, include_answer=True))
 
+    @socketio.on("display_unirse")
+    @socket_event_performance("display_unirse")
+    def display_unirse(data):
+        game_code = str(data.get("codigo_partida", "")).strip().upper()
+        state = build_live_state(game_code, include_answer=False)
+
+        if state is None:
+            with measure("SocketIO"):
+                emit("error_sala", {
+                    "success": False,
+                    "message": "La sala no existe."
+                })
+            return
+
+        join_room(display_room(game_code))
+        with measure("SocketIO"):
+            emit("estado_sala", state)
+
     @socketio.on("participante_unirse")
     @socket_event_performance("participante_unirse")
     def participante_unirse(data):
@@ -428,6 +482,12 @@ def register_socket_events(socketio):
                         ranking,
                         room=game_room(game_code)
                     )
+                emit_to_display(
+                    socketio,
+                    "actualizar_puntajes",
+                    ranking,
+                    game_code
+                )
 
         else:
             with measure("SocketIO"):
@@ -485,6 +545,12 @@ def register_socket_events(socketio):
                         ranking,
                         room=game_room(participant_ref["game_code"])
                     )
+                emit_to_display(
+                    socketio,
+                    "actualizar_puntajes",
+                    ranking,
+                    participant_ref["game_code"]
+                )
 
     @socketio.on("iniciar_competencia")
     @socket_event_performance("iniciar_competencia")
@@ -533,6 +599,12 @@ def register_socket_events(socketio):
                     },
                     game_code
                 )
+                emit_to_display(
+                    socketio,
+                    "solicitud_palabra_publica",
+                    {"request": request},
+                    game_code
+                )
 
     @socketio.on("dar_palabra")
     @socket_event_performance("dar_palabra")
@@ -565,6 +637,12 @@ def register_socket_events(socketio):
                         request,
                         room=game_room(game_code)
                     )
+                emit_to_display(
+                    socketio,
+                    "estado_palabra",
+                    request,
+                    game_code
+                )
 
             if timer is not None:
                 emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
@@ -599,6 +677,15 @@ def register_socket_events(socketio):
                     socketio,
                     "respuesta_calificada",
                     data_result,
+                    game_code
+                )
+                emit_to_display(
+                    socketio,
+                    "respuesta_publica",
+                    {
+                        "resultado": request.get("estado"),
+                        "request": request
+                    },
                     game_code
                 )
 
@@ -637,6 +724,15 @@ def register_socket_events(socketio):
                     data_result,
                     game_code
                 )
+                emit_to_display(
+                    socketio,
+                    "respuesta_publica",
+                    {
+                        "resultado": request.get("estado"),
+                        "request": request
+                    },
+                    game_code
+                )
 
             if ranking is not None:
                 emit_live_event(socketio, "actualizar_puntajes", ranking, game_code)
@@ -653,6 +749,15 @@ def register_socket_events(socketio):
                         },
                         room=game_room(game_code)
                     )
+                emit_to_display(
+                    socketio,
+                    "estado_competencia",
+                    {
+                        "estado": "Pregunta en curso",
+                        "mensaje": "Los equipos pueden pedir la palabra."
+                    },
+                    game_code
+                )
 
     @socketio.on("siguiente_pregunta")
     @socket_event_performance("siguiente_pregunta")
