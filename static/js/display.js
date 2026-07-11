@@ -7,6 +7,7 @@ let displayCode = "";
 let displayTotalQuestions = null;
 let displayCurrentQuestion = null;
 let displayState = {};
+let displayRequests = [];
 
 function setDisplayMessage(message, success = true) {
     displayJoinMessage.textContent = message || "";
@@ -61,6 +62,38 @@ function teamLabel(request) {
     return request?.sede || request?.nombre || "Equipo";
 }
 
+function sortDisplayRequests(requests) {
+    return [...(requests || [])].sort(
+        (a, b) => Number(a.orden_solicitud || 0) - Number(b.orden_solicitud || 0)
+    );
+}
+
+function upsertDisplayRequest(request) {
+    if (!request?.id_solicitud) {
+        return;
+    }
+
+    const index = displayRequests.findIndex(
+        item => item.id_solicitud === request.id_solicitud
+    );
+
+    if (index >= 0) {
+        displayRequests[index] = {
+            ...displayRequests[index],
+            ...request
+        };
+    } else {
+        displayRequests.push(request);
+    }
+
+    displayRequests = sortDisplayRequests(displayRequests);
+}
+
+function setDisplayQueue(requests) {
+    displayRequests = sortDisplayRequests(requests || []);
+    renderDisplayQueue();
+}
+
 function setWordWaiting(message = "Esperando que un equipo solicite la palabra...") {
     document.getElementById("displayWordStatus").textContent = message;
     document.getElementById("displayWordStatus").classList.remove("display-word-active");
@@ -69,6 +102,34 @@ function setWordWaiting(message = "Esperando que un equipo solicite la palabra..
 function setWordActive(request) {
     document.getElementById("displayWordStatus").textContent = `Responde: ${teamLabel(request)}`;
     document.getElementById("displayWordStatus").classList.add("display-word-active");
+}
+
+function renderDisplayQueue() {
+    const target = document.getElementById("displayWordQueue");
+    const active = displayRequests.find(item => item.estado === "EN_TURNO");
+    const waiting = displayRequests.filter(item => item.estado === "EN_COLA");
+
+    if (!active && waiting.length === 0) {
+        target.innerHTML = "<div class='text-secondary'>Sin solicitudes.</div>";
+        return;
+    }
+
+    target.innerHTML = `
+        ${active ? `
+            <div class="queue-active">
+                <small>Microfono abierto</small>
+                <strong>${escapeHtml(teamLabel(active))}</strong>
+            </div>
+        ` : ""}
+        <div class="queue-waiting">
+            <small>En espera</small>
+            ${
+                waiting.length
+                    ? waiting.map((item, index) => `<div>${index + 1}. ${escapeHtml(teamLabel(item))}</div>`).join("")
+                    : "<div class='text-secondary'>Nadie en cola.</div>"
+            }
+        </div>
+    `;
 }
 
 function renderDisplayStatus(status, message = "") {
@@ -87,8 +148,9 @@ function renderDisplayRanking(ranking) {
 
 function showDisplayPodium(ranking) {
     displayCurrentQuestion = null;
+    displayLivePanel.classList.add("podium-mode");
     document.getElementById("displayPodiumPanel").classList.remove("d-none");
-    renderRanking(document.getElementById("displayPodium"), ranking);
+    renderAnimatedPodium(document.getElementById("displayPodium"), ranking);
     renderDisplayStatus("Competencia finalizada", "La competencia ha terminado.");
     document.getElementById("displayQuestionText").textContent = "Competencia finalizada.";
     renderDisplayImage("");
@@ -118,6 +180,7 @@ function applyDisplayState(state) {
     }
 
     const activeRequest = (state.solicitudes || []).find(item => item.estado === "EN_TURNO");
+    setDisplayQueue(state.solicitudes || []);
     if (activeRequest) {
         setWordActive(activeRequest);
     } else if (state.partida?.estado === "FINALIZADA") {
@@ -171,6 +234,8 @@ displaySocket.on("estado_competencia", event => {
 displaySocket.on("mostrar_pregunta", question => {
     playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
     resetTimerSound("display");
+    displayLivePanel.classList.remove("podium-mode");
+    setDisplayQueue([]);
     document.getElementById("displayPodiumPanel").classList.add("d-none");
     displayState = {
         ...displayState,
@@ -190,12 +255,20 @@ displaySocket.on("actualizar_puntajes", ranking => {
     renderDisplayRanking(ranking);
 });
 
-displaySocket.on("solicitud_palabra_publica", () => {
+displaySocket.on("solicitud_palabra_publica", payload => {
     playSound("request");
+    if (Array.isArray(payload?.queue)) {
+        setDisplayQueue(payload.queue);
+    } else if (payload?.request) {
+        upsertDisplayRequest(payload.request);
+        renderDisplayQueue();
+    }
 });
 
 displaySocket.on("estado_palabra", request => {
     playSound("turn");
+    upsertDisplayRequest(request);
+    renderDisplayQueue();
     setWordActive(request);
     renderDisplayStatus("Esperando respuesta", "Un equipo tiene la palabra.");
 });
@@ -203,11 +276,26 @@ displaySocket.on("estado_palabra", request => {
 displaySocket.on("respuesta_publica", payload => {
     const correct = payload?.resultado === "CORRECTA";
     playSound(correct ? "correct" : "incorrect");
+    if (Array.isArray(payload?.affected_requests)) {
+        setDisplayQueue(
+            payload.affected_requests.filter(
+                item => item.estado === "EN_COLA" || item.estado === "EN_TURNO"
+            )
+        );
+    }
+    if (payload?.next_request) {
+        upsertDisplayRequest(payload.next_request);
+        renderDisplayQueue();
+    }
     renderDisplayStatus(
         correct ? "Esperando siguiente pregunta" : "Pregunta en curso",
         correct ? "Esperando siguiente pregunta." : "Los equipos pueden pedir la palabra."
     );
-    setWordWaiting(correct ? "Esperando siguiente pregunta." : "Esperando que un equipo solicite la palabra...");
+    if (payload?.next_request) {
+        setWordActive(payload.next_request);
+    } else {
+        setWordWaiting(correct ? "Esperando siguiente pregunta." : "Esperando que un equipo solicite la palabra...");
+    }
 });
 
 displaySocket.on("mostrar_podio", ranking => {

@@ -24,6 +24,7 @@ const liveSoundPaths = {
     incorrect: "/static/audio/incorrect.wav",
     countdown: "/static/audio/countdown.wav",
     finish: "/static/audio/finish.wav",
+    celebrate: "/static/audio/celebrate.wav",
     tick: "/static/audio/tick.wav",
     timeup: "/static/audio/timeup.wav"
 };
@@ -49,12 +50,14 @@ function enableLiveSounds() {
     window.addEventListener(eventName, enableLiveSounds, {once: true, passive: true});
 });
 
-function playSound(name) {
+function playSound(name, options = {}) {
     if (!liveSoundsEnabled || !liveSoundPaths[name]) {
         return;
     }
 
     const audio = liveAudioCache[name] || new Audio(liveSoundPaths[name]);
+    audio.volume = options.volume ?? audio.volume ?? 0.38;
+    audio.playbackRate = options.rate || 1;
     audio.currentTime = 0;
     audio.play().catch(() => {});
 }
@@ -83,15 +86,66 @@ function normalizedTimerValue(timer) {
 
 function renderRanking(target, rankingData) {
     const ranking = rankingData?.ranking || [];
+    const leaderScore = Math.max(
+        0,
+        ...ranking.map(item => Number(item.puntaje || 0))
+    );
+    const medals = ["🥇", "🥈", "🥉"];
+
     target.innerHTML = ranking.map((item, index) => `
-        <div class="list-row podium-row">
-            <div>
-                <strong>${index + 1}. ${escapeHtml(item.sede || item.nombre)}</strong>
-                <small>${escapeHtml(item.nombre || "")}</small>
+        <div class="ranking-row podium-row" style="--score-width: ${
+            leaderScore > 0
+                ? Math.max(4, Math.round((Number(item.puntaje || 0) / leaderScore) * 100))
+                : 0
+        }%">
+            <div class="ranking-row-head">
+                <div>
+                    <strong>${medals[index] || `${index + 1}.`} ${escapeHtml(item.sede || item.nombre)}</strong>
+                    <small>${escapeHtml(item.nombre || "")}</small>
+                </div>
+                <span>${Number(item.puntaje || 0)} pts</span>
             </div>
-            <span class="badge text-bg-primary">${item.puntaje} pts</span>
+            <div class="ranking-bar" aria-hidden="true"><span></span></div>
         </div>
     `).join("") || "<div class='text-secondary'>Sin puntajes registrados.</div>";
+}
+
+function renderAnimatedPodium(target, rankingData) {
+    const ranking = (rankingData?.ranking || []).slice(0, 3);
+    const podiumItems = ranking.map((item, index) => ({
+        ...item,
+        place: index + 1,
+        medal: ["🥇", "🥈", "🥉"][index],
+        delay: [1.45, 0.75, 0.15][index]
+    }));
+    const confetti = Array.from({length: 16}, (_, index) => (
+        `<span style="--x:${(index % 8) * 12 + 4}%;--delay:${(index % 6) * 0.18}s"></span>`
+    )).join("");
+
+    target.innerHTML = `
+        <div class="final-podium-view">
+            <div class="css-confetti" aria-hidden="true">${confetti}</div>
+            <div class="podium-stage">
+                ${podiumItems.map(item => `
+                    <div class="podium-place podium-place-${item.place}" data-place="${item.place}" style="--podium-delay:${item.delay}s">
+                        <div class="podium-medal">${item.medal}</div>
+                        <strong>${escapeHtml(item.sede || item.nombre || "Equipo")}</strong>
+                        <small>${escapeHtml(item.nombre || "")}</small>
+                        <span>${Number(item.puntaje || 0)} pts</span>
+                        <div class="podium-block"></div>
+                    </div>
+                `).join("")}
+            </div>
+        </div>
+    `;
+
+    const champion = target.querySelector('[data-place="1"]');
+
+    if (champion) {
+        champion.addEventListener("animationstart", () => {
+            playSound("celebrate", {volume: 0.5});
+        }, {once: true});
+    }
 }
 
 function renderTimer(target, timer, progressTarget = null) {
@@ -118,7 +172,7 @@ function renderTimer(target, timer, progressTarget = null) {
     progressTarget.dataset.timerTotal = String(total || 0);
     const percent = total ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
     progressTarget.style.width = `${percent}%`;
-    progressTarget.classList.toggle("timer-progress-warning", remaining !== null && remaining <= 5 && remaining > 0);
+    progressTarget.classList.toggle("timer-progress-warning", remaining !== null && remaining <= 10 && remaining > 0);
     progressTarget.classList.toggle("timer-progress-ended", remaining === 0);
 }
 
@@ -131,8 +185,12 @@ function handleTimerSound(timer, key = "default") {
 
     liveTimerSoundState[key] = remaining;
 
-    if (remaining > 0 && remaining <= 5) {
-        playSound("tick");
+    if (remaining > 0 && remaining <= 10) {
+        const urgency = 11 - remaining;
+        playSound("tick", {
+            rate: 1 + urgency * 0.08,
+            volume: Math.min(0.65, 0.28 + urgency * 0.035)
+        });
     } else if (remaining === 0) {
         playSound("timeup");
     }

@@ -2819,6 +2819,9 @@ class PartidaDao:
                 )
             )
 
+            timer = None
+            next_request = None
+
             if resultado == sg.GAME_ANSWER_RESULT_CORRECT:
                 self.dao.cursor.execute(
                     """
@@ -2857,9 +2860,43 @@ class PartidaDao:
                         request["id_partida_pregunta"]
                     )
                 )
-                timer = self._resume_question_timer(
-                    request["id_partida"]
-                )
+
+                next_request_row = self.dao.cursor.execute(
+                    """
+                    SELECT id_solicitud
+                    FROM solicitudes_palabra
+                    WHERE id_partida = ?
+                    AND id_partida_pregunta = ?
+                    AND estado = ?
+                    ORDER BY orden_solicitud
+                    LIMIT 1;
+                    """,
+                    (
+                        request["id_partida"],
+                        request["id_partida_pregunta"],
+                        sg.WORD_REQUEST_STATUS_QUEUED
+                    )
+                ).fetchone()
+
+                if next_request_row is not None:
+                    self.dao.cursor.execute(
+                        """
+                        UPDATE solicitudes_palabra
+                        SET estado = ?
+                        WHERE id_solicitud = ?;
+                        """,
+                        (
+                            sg.WORD_REQUEST_STATUS_TURN,
+                            next_request_row["id_solicitud"]
+                        )
+                    )
+                    next_request = self._request_payload(
+                        next_request_row["id_solicitud"]
+                    )
+                else:
+                    timer = self._resume_question_timer(
+                        request["id_partida"]
+                    )
 
             updated_request = self._request_payload(id_solicitud)
             affected_requests = self.dao.cursor.execute(
@@ -2906,6 +2943,7 @@ class PartidaDao:
                 "ranking": ranking,
                 "resultado": resultado,
                 "puntos_aplicados": puntos_aplicados,
+                "next_request": next_request,
                 "timer": timer if resultado == sg.GAME_ANSWER_RESULT_INCORRECT else None
             }
 

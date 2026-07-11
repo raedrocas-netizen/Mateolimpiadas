@@ -9,6 +9,7 @@ const finalActions = document.getElementById("finalActions");
 const teamScore = document.getElementById("teamScore");
 const podiumTitle = document.getElementById("podiumTitle");
 let hasRequestedForQuestion = false;
+let hasAnsweredForQuestion = false;
 
 document.getElementById("teamName").textContent = participantSession.nombre_equipo || "Equipo";
 document.getElementById("roomCode").textContent = participantSession.codigo_partida || "";
@@ -40,12 +41,19 @@ function showTurnMessage(title, message) {
     requestButton.disabled = true;
 }
 
+function ownWordRequest(requests = []) {
+    return (requests || []).find(
+        item => item.codigo_participante === participantSession.codigo_participante
+    );
+}
+
 function showFinalPodium(rankingData) {
     const ranking = rankingData?.ranking || [];
     const own = ranking.find(
         item => item.participant_code === participantSession.codigo_participante
     );
 
+    document.querySelector(".participant-view")?.classList.add("podium-mode");
     requestButton.classList.add("d-none");
     requestButton.disabled = true;
     finalActions.classList.remove("d-none");
@@ -53,7 +61,7 @@ function showFinalPodium(rankingData) {
     teamScore.textContent = own
         ? `Puntaje de tu equipo: ${own.puntaje} pts`
         : "Puntaje final disponible en el marcador.";
-    renderRanking(rankingEl, rankingData);
+    renderAnimatedPodium(rankingEl, rankingData);
 }
 
 function renderParticipantQuestion(question) {
@@ -79,9 +87,9 @@ requestButton.addEventListener("click", () => {
 socket.on("estado_sala", state => {
     renderParticipantTimer(state.timer, state.partida?.tiempo_por_pregunta);
     renderRanking(rankingEl, state.ranking);
+    const ownRequest = ownWordRequest(state.solicitudes);
 
     if (state.estado_competencia === "Esperando respuesta") {
-        requestButton.disabled = true;
         statusEl.textContent = state.estado_competencia;
         if (state.pregunta) {
             renderParticipantQuestion(state.pregunta);
@@ -91,12 +99,23 @@ socket.on("estado_sala", state => {
                 state.mensaje_estado || "Un equipo tiene la palabra."
             );
         }
+
+        if (ownRequest?.estado === "EN_TURNO") {
+            hasRequestedForQuestion = true;
+            showTurnMessage("Tienen la palabra", "USTEDES TIENEN LA PALABRA");
+        } else if (ownRequest || hasRequestedForQuestion || hasAnsweredForQuestion) {
+            requestButton.disabled = true;
+            statusEl.textContent = "Esperando turno";
+        } else {
+            requestButton.disabled = false;
+            statusEl.textContent = "Otro equipo esta respondiendo";
+        }
     } else if (
         state.partida?.estado === "EN_CURSO"
         && state.pregunta
         && state.estado_competencia === "Pregunta en curso"
     ) {
-        requestButton.disabled = hasRequestedForQuestion;
+        requestButton.disabled = hasRequestedForQuestion || hasAnsweredForQuestion;
         statusEl.textContent = "Pregunta en curso";
         renderParticipantQuestion(state.pregunta);
     } else if (state.partida?.estado === "EN_CURSO") {
@@ -130,7 +149,9 @@ socket.on("estado_sala", state => {
 socket.on("mostrar_pregunta", question => {
     playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
     resetTimerSound("participant");
+    document.querySelector(".participant-view")?.classList.remove("podium-mode");
     hasRequestedForQuestion = false;
+    hasAnsweredForQuestion = false;
     renderParticipantQuestion(question);
     statusEl.textContent = "Pregunta en curso";
     requestButton.classList.remove("d-none");
@@ -145,7 +166,7 @@ socket.on("estado_competencia", event => {
     }
 
     if (event.estado === "Pregunta en curso") {
-        requestButton.disabled = hasRequestedForQuestion;
+        requestButton.disabled = hasRequestedForQuestion || hasAnsweredForQuestion;
         statusEl.textContent = "Pregunta en curso";
         questionText.textContent = event.mensaje || "Los equipos pueden pedir la palabra.";
         return;
@@ -185,10 +206,13 @@ socket.on("estado_palabra", request => {
         return;
     }
 
-    showTurnMessage(
-        "Espere su turno",
-        "OTRO EQUIPO ESTA RESPONDIENDO."
-    );
+    statusEl.textContent = hasRequestedForQuestion
+        ? "Esperando turno"
+        : "Otro equipo esta respondiendo";
+    questionText.textContent = hasAnsweredForQuestion
+        ? questionText.textContent
+        : "OTRO EQUIPO ESTA RESPONDIENDO. Puedes pedir la palabra si aun no estas en cola.";
+    requestButton.disabled = hasRequestedForQuestion || hasAnsweredForQuestion;
 });
 
 socket.on("resultado_respuesta", payload => {
@@ -201,6 +225,7 @@ socket.on("resultado_respuesta", payload => {
     const correct = request.estado === "CORRECTA";
     playSound(correct ? "correct" : "incorrect");
     hasRequestedForQuestion = true;
+    hasAnsweredForQuestion = true;
     statusEl.textContent = correct ? "Respuesta correcta" : "Respuesta incorrecta";
     questionText.textContent = correct
         ? "Puntaje actualizado. Esperando siguiente pregunta."

@@ -602,7 +602,10 @@ def register_socket_events(socketio):
                 emit_to_display(
                     socketio,
                     "solicitud_palabra_publica",
-                    {"request": request},
+                    {
+                        "request": request,
+                        "queue": request_data.get("queue", [request])
+                    },
                     game_code
                 )
 
@@ -684,7 +687,8 @@ def register_socket_events(socketio):
                     "respuesta_publica",
                     {
                         "resultado": request.get("estado"),
-                        "request": request
+                        "request": request,
+                        "affected_requests": data_result.get("affected_requests", [])
                     },
                     game_code
                 )
@@ -710,6 +714,7 @@ def register_socket_events(socketio):
             request = data_result.get("request")
             ranking = data_result.get("ranking")
             timer = data_result.get("timer")
+            next_request = data_result.get("next_request")
 
             if request is not None:
                 emit_to_participant(
@@ -729,13 +734,35 @@ def register_socket_events(socketio):
                     "respuesta_publica",
                     {
                         "resultado": request.get("estado"),
-                        "request": request
+                        "request": request,
+                        "next_request": next_request,
+                        "affected_requests": data_result.get("affected_requests", [])
                     },
                     game_code
                 )
 
             if ranking is not None:
                 emit_live_event(socketio, "actualizar_puntajes", ranking, game_code)
+
+            if next_request is not None:
+                emit_to_judge(
+                    socketio,
+                    "palabra_otorgada",
+                    next_request,
+                    game_code
+                )
+                with measure("SocketIO"):
+                    socketio.emit(
+                        "estado_palabra",
+                        next_request,
+                        room=game_room(game_code)
+                    )
+                emit_to_display(
+                    socketio,
+                    "estado_palabra",
+                    next_request,
+                    game_code
+                )
 
             if timer is not None and request is not None:
                 emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
