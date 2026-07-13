@@ -16,17 +16,17 @@ function apiFetch(url, options = {}) {
 }
 
 const liveSoundPaths = {
-    start: "/static/audio/start.wav",
-    question: "/static/audio/question.wav",
-    request: "/static/audio/request.wav",
-    turn: "/static/audio/turn.wav",
-    correct: "/static/audio/correct.wav",
-    incorrect: "/static/audio/incorrect.wav",
-    countdown: "/static/audio/countdown.wav",
-    finish: "/static/audio/finish.wav",
-    celebrate: "/static/audio/celebrate.wav",
-    tick: "/static/audio/tick.wav",
-    timeup: "/static/audio/timeup.wav"
+    start: "/static/audio/start.mp3",
+    question: "/static/audio/question.mp3",
+    request: "/static/audio/request.mp3",
+    turn: "/static/audio/turn.mp3",
+    correct: "/static/audio/correct.mp3",
+    incorrect: "/static/audio/incorrect.mp3",
+    countdown: "/static/audio/countdown.mp3",
+    finish: "/static/audio/finish.mp3",
+    celebrate: "/static/audio/celebrate.mp3",
+    tick: "/static/audio/tick.mp3",
+    timeup: "/static/audio/timeup.mp3"
 };
 const liveAudioCache = {};
 const liveTimerSoundState = {};
