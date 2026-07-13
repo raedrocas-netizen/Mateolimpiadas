@@ -726,7 +726,9 @@ judgeSocket.on("estado_competencia", event => {
 });
 
 judgeSocket.on("mostrar_pregunta", question => {
-    playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
+    if (Number(question?.numero_orden) === 1) {
+        playSound("start");
+    }
     resetTimerSound("judge");
     liveQuestionId = question?.id_partida_pregunta || null;
     liveRequests = [];

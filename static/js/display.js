@@ -232,7 +232,9 @@ displaySocket.on("estado_competencia", event => {
 });
 
 displaySocket.on("mostrar_pregunta", question => {
-    playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
+    if (Number(question?.numero_orden) === 1) {
+        playSound("start");
+    }
     resetTimerSound("display");
     displayLivePanel.classList.remove("podium-mode");
     setDisplayQueue([]);

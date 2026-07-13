@@ -17,7 +17,6 @@ function apiFetch(url, options = {}) {
 
 const liveSoundPaths = {
     start: "/static/audio/start.mp3",
-    question: "/static/audio/question.mp3",
     request: "/static/audio/request.mp3",
     turn: "/static/audio/turn.mp3",
     correct: "/static/audio/correct.mp3",
@@ -119,7 +118,7 @@ function renderRanking(target, rankingData) {
         0,
         ...ranking.map(item => Number(item.puntaje || 0))
     );
-    const medals = ["🥇", "🥈", "🥉"];
+    const medals = ["&#129351;", "&#129352;", "&#129353;"];
 
     target.innerHTML = ranking.map((item, index) => `
         <div class="ranking-row podium-row" style="--score-width: ${
@@ -141,22 +140,26 @@ function renderRanking(target, rankingData) {
 
 function renderAnimatedPodium(target, rankingData) {
     const ranking = (rankingData?.ranking || []).slice(0, 3);
+    const medals = ["&#129351;", "&#129352;", "&#129353;"];
     const podiumItems = ranking.map((item, index) => ({
         ...item,
         place: index + 1,
-        medal: ["🥇", "🥈", "🥉"][index],
-        delay: [1.45, 0.75, 0.15][index]
+        medal: medals[index]
     }));
     const confetti = Array.from({length: 16}, (_, index) => (
         `<span style="--x:${(index % 8) * 12 + 4}%;--delay:${(index % 6) * 0.18}s"></span>`
     )).join("");
 
     target.innerHTML = `
-        <div class="final-podium-view">
+        <div class="final-podium-view" data-podium-step="0" role="button" tabindex="0" aria-label="Avanzar premiacion">
             <div class="css-confetti" aria-hidden="true">${confetti}</div>
+            <div class="podium-intro">
+                <span>Resultados finales</span>
+                <strong>Haz clic para revelar el podio</strong>
+            </div>
             <div class="podium-stage">
                 ${podiumItems.map(item => `
-                    <div class="podium-place podium-place-${item.place}" data-place="${item.place}" style="--podium-delay:${item.delay}s">
+                    <div class="podium-place podium-place-${item.place}" data-place="${item.place}">
                         <div class="podium-medal">${item.medal}</div>
                         <strong>${escapeHtml(item.sede || item.nombre || "Equipo")}</strong>
                         <small>${escapeHtml(item.nombre || "")}</small>
@@ -168,13 +171,39 @@ function renderAnimatedPodium(target, rankingData) {
         </div>
     `;
 
-    const champion = target.querySelector('[data-place="1"]');
+    const view = target.querySelector(".final-podium-view");
+    const revealOrder = [3, 2, 1].filter(place => view.querySelector(`[data-place="${place}"]`));
 
-    if (champion) {
-        champion.addEventListener("animationstart", () => {
+    function advancePodium() {
+        const currentStep = Number(view.dataset.podiumStep || 0);
+
+        if (currentStep >= revealOrder.length) {
+            return;
+        }
+
+        const nextStep = currentStep + 1;
+        const place = revealOrder[currentStep];
+        const podiumPlace = view.querySelector(`[data-place="${place}"]`);
+        view.dataset.podiumStep = String(nextStep);
+        view.classList.toggle("podium-started", nextStep > 0);
+
+        if (podiumPlace) {
+            podiumPlace.classList.add("podium-revealed");
+        }
+
+        if (place === 1 && podiumPlace) {
+            view.classList.add("podium-champion-shown");
             playSound("celebrate", {volume: 0.5});
-        }, {once: true});
+        }
     }
+
+    view.addEventListener("click", advancePodium);
+    view.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            advancePodium();
+        }
+    });
 }
 
 function renderTimer(target, timer, progressTarget = null) {

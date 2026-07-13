@@ -530,11 +530,21 @@ body {
 }
 
 .display-podium {
-    padding: 22px;
+    padding: 12px;
 }
 
 .display-live.podium-mode {
     grid-template-rows: auto 1fr;
+    gap: 10px;
+    padding: 12px;
+}
+
+.display-live.podium-mode .display-header {
+    padding: 10px 16px;
+}
+
+.display-live.podium-mode .display-header h1 {
+    font-size: clamp(1.2rem, 2vw, 1.8rem);
 }
 
 .display-live.podium-mode .display-main {
@@ -546,15 +556,16 @@ body {
 }
 
 .participant-view.podium-mode {
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
 }
 
 .participant-view.podium-mode .question-band {
-    margin-bottom: 0;
+    display: none;
 }
 
 .participant-view.podium-mode .ranking-panel {
     border-top: 0;
+    padding: 12px;
 }
 
 .participant-view.podium-mode .ranking-panel h2,
@@ -564,32 +575,62 @@ body {
 
 .final-podium-view {
     position: relative;
-    min-height: min(60vh, 560px);
+    height: min(68vh, 660px);
+    min-height: 430px;
+    max-height: calc(100vh - 190px);
     overflow: hidden;
     border-radius: 8px;
     background: linear-gradient(180deg, #eff6ff, #fff);
+    cursor: pointer;
+    outline: none;
+}
+
+.podium-intro {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 8px;
+    text-align: center;
+    z-index: 2;
+    color: var(--ink);
+    pointer-events: none;
+}
+
+.podium-intro span {
+    color: var(--muted);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.podium-intro strong {
+    font-size: clamp(1.4rem, 3vw, 3rem);
+}
+
+.podium-started .podium-intro {
+    display: none;
 }
 
 .podium-stage {
     position: relative;
     z-index: 1;
-    min-height: min(56vh, 520px);
+    height: 100%;
     display: grid;
     grid-template-columns: 1fr 1.15fr 1fr;
     align-items: end;
-    gap: clamp(10px, 3vw, 28px);
-    padding: clamp(18px, 4vw, 42px);
+    gap: clamp(8px, 2vw, 22px);
+    padding: clamp(10px, 2.5vw, 26px);
 }
 
 .podium-place {
     display: grid;
     justify-items: center;
-    gap: 8px;
+    gap: 5px;
     text-align: center;
+    visibility: hidden;
     opacity: 0;
-    transform: translateY(48px);
-    animation: podiumRise 0.68s ease forwards;
-    animation-delay: var(--podium-delay);
+    transform: translateY(32px);
 }
 
 .podium-place-1 {
@@ -608,12 +649,22 @@ body {
     color: #9a3412;
 }
 
+.podium-place.podium-revealed {
+    visibility: visible;
+    animation: podiumRise 0.58s ease forwards;
+}
+
+.podium-place-1.podium-revealed {
+    animation-name: championRise;
+}
+
 .podium-medal {
-    font-size: clamp(2.4rem, 7vw, 5.5rem);
+    font-size: clamp(2rem, 4.8vw, 4.2rem);
 }
 
 .podium-place strong {
-    font-size: clamp(1.25rem, 3vw, 2.8rem);
+    font-size: clamp(1.05rem, 2.4vw, 2.1rem);
+    line-height: 1.05;
 }
 
 .podium-place small {
@@ -622,31 +673,39 @@ body {
 }
 
 .podium-place span {
-    font-size: clamp(1rem, 2.4vw, 1.9rem);
+    font-size: clamp(0.95rem, 1.9vw, 1.45rem);
     font-weight: 900;
 }
 
 .podium-block {
     width: 100%;
-    min-height: 90px;
+    min-height: 68px;
     border-radius: 8px 8px 0 0;
     background: #fdba74;
 }
 
 .podium-place-1 .podium-block {
-    min-height: 190px;
+    min-height: 145px;
     background: linear-gradient(180deg, #fde68a, #f59e0b);
     box-shadow: 0 0 40px rgba(245, 158, 11, 0.45);
 }
 
 .podium-place-2 .podium-block {
-    min-height: 140px;
+    min-height: 108px;
     background: linear-gradient(180deg, #e2e8f0, #94a3b8);
 }
 
 .podium-place-3 .podium-block {
-    min-height: 110px;
+    min-height: 84px;
     background: linear-gradient(180deg, #fed7aa, #c2410c);
+}
+
+.css-confetti {
+    display: none;
+}
+
+.podium-champion-shown .css-confetti {
+    display: block;
 }
 
 .css-confetti span {

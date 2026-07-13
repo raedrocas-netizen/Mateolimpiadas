@@ -147,7 +147,9 @@ socket.on("estado_sala", state => {
 });
 
 socket.on("mostrar_pregunta", question => {
-    playSound(Number(question?.numero_orden) === 1 ? "start" : "question");
+    if (Number(question?.numero_orden) === 1) {
+        playSound("start");
+    }
     resetTimerSound("participant");
     document.querySelector(".participant-view")?.classList.remove("podium-mode");
     hasRequestedForQuestion = false;
