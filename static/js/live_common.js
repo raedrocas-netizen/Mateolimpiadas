@@ -30,6 +30,16 @@ const liveSoundPaths = {
 };
 const liveAudioCache = {};
 const liveTimerSoundState = {};
+const stopTickBeforeSound = new Set([
+    "start",
+    "question",
+    "turn",
+    "correct",
+    "incorrect",
+    "countdown",
+    "finish",
+    "timeup"
+]);
 let liveSoundsEnabled = false;
 
 function enableLiveSounds() {
@@ -46,6 +56,21 @@ function enableLiveSounds() {
     });
 }
 
+function stopSound(name) {
+    const audio = liveAudioCache[name];
+
+    if (!audio) {
+        return;
+    }
+
+    audio.pause();
+    audio.currentTime = 0;
+}
+
+function stopTickSound() {
+    stopSound("tick");
+}
+
 ["pointerdown", "keydown", "touchstart"].forEach(eventName => {
     window.addEventListener(eventName, enableLiveSounds, {once: true, passive: true});
 });
@@ -53,6 +78,10 @@ function enableLiveSounds() {
 function playSound(name, options = {}) {
     if (!liveSoundsEnabled || !liveSoundPaths[name]) {
         return;
+    }
+
+    if (stopTickBeforeSound.has(name)) {
+        stopTickSound();
     }
 
     const audio = liveAudioCache[name] || new Audio(liveSoundPaths[name]);
@@ -192,10 +221,12 @@ function handleTimerSound(timer, key = "default") {
             volume: Math.min(0.65, 0.28 + urgency * 0.035)
         });
     } else if (remaining === 0) {
+        stopTickSound();
         playSound("timeup");
     }
 }
 
 function resetTimerSound(key = "default") {
+    stopTickSound();
     delete liveTimerSoundState[key];
 }
