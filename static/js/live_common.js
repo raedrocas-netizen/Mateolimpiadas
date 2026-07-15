@@ -29,6 +29,7 @@ const liveSoundPaths = {
 };
 const liveAudioCache = {};
 const liveTimerSoundState = {};
+const liveActiveTickKeys = new Set();
 const stopTickBeforeSound = new Set([
     "start",
     "question",
@@ -67,7 +68,16 @@ function stopSound(name) {
 }
 
 function stopTickSound() {
-    stopSound("tick");
+    liveActiveTickKeys.clear();
+    const audio = liveAudioCache.tick;
+
+    if (!audio) {
+        return;
+    }
+
+    audio.pause();
+    audio.currentTime = 0;
+    audio.loop = false;
 }
 
 ["pointerdown", "keydown", "touchstart"].forEach(eventName => {
@@ -86,8 +96,37 @@ function playSound(name, options = {}) {
     const audio = liveAudioCache[name] || new Audio(liveSoundPaths[name]);
     audio.volume = options.volume ?? audio.volume ?? 0.38;
     audio.playbackRate = options.rate || 1;
+    audio.loop = options.loop || false;
     audio.currentTime = 0;
     audio.play().catch(() => {});
+}
+
+function startTickSound(key = "default") {
+    if (!liveSoundsEnabled || !liveSoundPaths.tick) {
+        return;
+    }
+
+    const audio = liveAudioCache.tick || new Audio(liveSoundPaths.tick);
+    liveAudioCache.tick = audio;
+    audio.volume = 0.38;
+    audio.playbackRate = 1;
+    audio.loop = true;
+    liveActiveTickKeys.add(key);
+
+    if (!audio.paused && !audio.ended) {
+        return;
+    }
+
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+}
+
+function stopTimerTickSound(key = "default") {
+    liveActiveTickKeys.delete(key);
+
+    if (liveActiveTickKeys.size === 0) {
+        stopTickSound();
+    }
 }
 
 function formJson(form) {
@@ -236,26 +275,32 @@ function renderTimer(target, timer, progressTarget = null) {
 
 function handleTimerSound(timer, key = "default") {
     const remaining = normalizedTimerValue(timer);
+    const timerActive = Boolean(timer?.active_since) && !timer?.exhausted && remaining > 0;
+    const stateSignature = `${remaining ?? "none"}:${timerActive ? "active" : "inactive"}:${timer?.exhausted ? "ended" : "open"}`;
 
-    if (remaining === null || liveTimerSoundState[key] === remaining) {
+    if (remaining === null) {
+        stopTimerTickSound(key);
+        delete liveTimerSoundState[key];
         return;
     }
 
-    liveTimerSoundState[key] = remaining;
+    if (liveTimerSoundState[key] === stateSignature) {
+        return;
+    }
 
-    if (remaining > 0 && remaining <= 10) {
-        const urgency = 11 - remaining;
-        playSound("tick", {
-            rate: 1 + urgency * 0.08,
-            volume: Math.min(0.65, 0.28 + urgency * 0.035)
-        });
-    } else if (remaining === 0) {
-        stopTickSound();
+    liveTimerSoundState[key] = stateSignature;
+
+    if (timerActive) {
+        startTickSound(key);
+    } else if (remaining === 0 || timer?.exhausted) {
+        stopTimerTickSound(key);
         playSound("timeup");
+    } else {
+        stopTimerTickSound(key);
     }
 }
 
 function resetTimerSound(key = "default") {
-    stopTickSound();
+    stopTimerTickSound(key);
     delete liveTimerSoundState[key];
 }
