@@ -14,9 +14,11 @@ let hasAnsweredForQuestion = false;
 document.getElementById("teamName").textContent = participantSession.nombre_equipo || "Equipo";
 document.getElementById("roomCode").textContent = participantSession.codigo_partida || "";
 
-if (participantSession.codigo_partida) {
-    socket.emit("participante_reconectar", participantSession);
-}
+socket.on("connect", () => {
+    if (participantSession.codigo_partida) {
+        socket.emit("participante_reconectar", participantSession);
+    }
+});
 
 function renderParticipantTimer(timer, duration = null) {
     renderTimer(

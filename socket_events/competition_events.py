@@ -502,6 +502,8 @@ def register_socket_events(socketio):
     def participante_reconectar(data):
         game_code = str(data.get("codigo_partida", "")).strip().upper()
         code = data.get("codigo_participante")
+        business = PartidaBusiness()
+        partida = business.get_by_code(game_code)
         join_room(game_room(game_code))
 
         if code:
@@ -510,6 +512,46 @@ def register_socket_events(socketio):
                 "game_code": game_code,
                 "participant_code": code
             }
+
+            if partida is not None:
+                participant = business.get_participant_by_code(
+                    partida.get_id_partida(),
+                    code
+                )
+
+                if participant is not None and participant.get("conectado") != 1:
+                    reconnect_result = business.join_game(
+                        game_code,
+                        participant.get("sede"),
+                        participant.get("nombre"),
+                        participant.get("integrantes", "")
+                    )
+
+                    if reconnect_result.get_success():
+                        reconnected = reconnect_result.get_data()
+                        ranking = serialize_any(business.get_live_ranking(game_code))
+                        emit_to_judge(
+                            socketio,
+                            "participante_conectado",
+                            {
+                                "participant": reconnected,
+                                "ranking": ranking
+                            },
+                            game_code
+                        )
+                        if ranking is not None:
+                            with measure("SocketIO"):
+                                socketio.emit(
+                                    "actualizar_puntajes",
+                                    ranking,
+                                    room=game_room(game_code)
+                                )
+                            emit_to_display(
+                                socketio,
+                                "actualizar_puntajes",
+                                ranking,
+                                game_code
+                            )
 
         with measure("SocketIO"):
             emit("estado_sala", build_live_state(game_code))
@@ -520,6 +562,15 @@ def register_socket_events(socketio):
         participant_ref = connected_participants.pop(request.sid, None)
 
         if not participant_ref:
+            return
+
+        still_connected = any(
+            item.get("game_code") == participant_ref["game_code"]
+            and item.get("participant_code") == participant_ref["participant_code"]
+            for item in connected_participants.values()
+        )
+
+        if still_connected:
             return
 
         business = PartidaBusiness()
