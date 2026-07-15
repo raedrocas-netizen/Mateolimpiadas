@@ -463,6 +463,10 @@ def register_socket_events(socketio):
             game_code = data.get("codigo_partida", "").strip().upper()
             join_room(game_room(game_code))
             join_room(participant_room(participant["codigo_participante"]))
+            connected_participants[request.sid] = {
+                "game_code": game_code,
+                "participant_code": participant["codigo_participante"]
+            }
             with measure("SocketIO"):
                 emit("participante_registrado", payload)
             ranking = serialize_any(business.get_live_ranking(game_code))
