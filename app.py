@@ -11,7 +11,7 @@ from socket_events.competition_events import register_socket_events
 
 
 def create_app():
-    app = Flask(__name__)git
+    app = Flask(__name__)
     app.config.from_object(Config)
 
     app.register_blueprint(main_bp)
