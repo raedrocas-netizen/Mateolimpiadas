@@ -153,14 +153,23 @@ Cuando la tarea sea grande, primero crear una auditoría o plan sin modificar c�
 - Diseñar estados vacíos, cargando, desconectado y error.
 - Evitar CSS global que pueda romper otras pantallas.
 
-## Identidad pendiente y aprobada
+## Identidad visual aprobada
 
 Logo principal:
-- Pendiente de recibir.
-- No reemplazar todavía.
+- Usar `static/img/logos/logo_olimpiadas_matematica.png`.
+- Es el logo principal aprobado para la fase final web.
+- Mantener sus proporciones, colores y transparencia.
+- No deformarlo, recolorearlo ni recortarlo sin autorización.
+- Usar `object-fit: contain` y tamaños responsivos.
+- Evitar mostrarlo tan pequeño que el texto interno sea ilegible.
+- El archivo fuente editable puede conservarse en
+  `docs/branding/logoOlimpiadasMatematica.ai`, pero no debe utilizarse
+  directamente desde HTML o CSS.
 
 Favicon:
-- Puede configurarse usando los recursos existentes del proyecto.
+- Crear o utilizar una versión simplificada y cuadrada del logo.
+- No depender del texto completo del logo en tamaños de 16x16 o 32x32.
+- Mantener provisionalmente los recursos existentes hasta aprobar el favicon definitivo.
 
 Footer:
 - Usar `static/img/logo_petapa.png`.
