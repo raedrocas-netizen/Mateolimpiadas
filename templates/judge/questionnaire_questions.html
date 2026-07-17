@@ -36,19 +36,59 @@
                         <label class="form-label">Texto de la pregunta</label>
                         <textarea class="form-control" name="enunciado" rows="5" required></textarea>
 
-                        <label class="form-label">Imagen opcional de la pregunta</label>
-                        <input class="form-control" type="file" name="imagen" accept="image/*">
+                        <label class="form-label" for="questionImageInput">Imagen opcional de la pregunta</label>
+                        <input id="questionImageInput" class="form-control" type="file" name="imagen" accept="image/*">
+                        <div class="image-attachment" data-image-preview="question">
+                            <div class="image-attachment-empty" data-preview-empty>
+                                <span class="image-attachment-empty-icon" aria-hidden="true">&#128444;</span>
+                                <span>Sin imagen de pregunta</span>
+                                <small>Selecciona un archivo para verlo antes de guardar.</small>
+                            </div>
+                            <div class="image-attachment-file d-none" data-preview-file>
+                                <button class="image-attachment-thumbnail" type="button" data-preview-open aria-label="Ver imagen de pregunta en tamaño completo">
+                                    <img data-preview-thumbnail alt="Previsualización de la imagen de pregunta">
+                                </button>
+                                <div class="image-attachment-details">
+                                    <button class="image-attachment-name" type="button" data-preview-name data-preview-open></button>
+                                    <small>Imagen de la pregunta</small>
+                                    <div class="image-attachment-actions">
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-preview-open>Ver</button>
+                                        <a class="btn btn-sm btn-outline-secondary" data-preview-download>Descargar</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <label class="form-label">Respuesta esperada</label>
                         <textarea class="form-control" name="respuesta_descripcion" rows="4" required></textarea>
 
                         <input type="hidden" name="respuesta_id_ruta_imagen">
                         <input type="hidden" name="respuesta_nombre_imagen">
-                        <label class="form-label">Imagen opcional de la respuesta</label>
-                        <input class="form-control" type="file" name="respuesta_imagen" accept="image/*">
+                        <label class="form-label" for="answerImageInput">Imagen opcional de la respuesta</label>
+                        <input id="answerImageInput" class="form-control" type="file" name="respuesta_imagen" accept="image/*">
+                        <div class="image-attachment" data-image-preview="answer">
+                            <div class="image-attachment-empty" data-preview-empty>
+                                <span class="image-attachment-empty-icon" aria-hidden="true">&#128444;</span>
+                                <span>Sin imagen de respuesta</span>
+                                <small>Selecciona un archivo para verlo antes de guardar.</small>
+                            </div>
+                            <div class="image-attachment-file d-none" data-preview-file>
+                                <button class="image-attachment-thumbnail" type="button" data-preview-open aria-label="Ver imagen de respuesta en tamaño completo">
+                                    <img data-preview-thumbnail alt="Previsualización de la imagen de respuesta esperada">
+                                </button>
+                                <div class="image-attachment-details">
+                                    <button class="image-attachment-name" type="button" data-preview-name data-preview-open></button>
+                                    <small>Imagen de la respuesta esperada</small>
+                                    <div class="image-attachment-actions">
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-preview-open>Ver</button>
+                                        <a class="btn btn-sm btn-outline-secondary" data-preview-download>Descargar</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <button class="btn btn-success">Guardar pregunta</button>
-                        <div id="questionMessage" class="small-message"></div>
+                        <div id="questionMessage" class="small-message" role="status" aria-live="polite"></div>
                     </form>
                 </div>
             </div>
@@ -64,6 +104,27 @@
             </div>
         </div>
     </section>
+
+    <div class="modal fade question-image-modal" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title fs-5" id="imagePreviewModalLabel">Vista de imagen</h2>
+                        <div id="imagePreviewModalName" class="text-secondary image-modal-name"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar vista de imagen"></button>
+                </div>
+                <div class="modal-body">
+                    <img id="imagePreviewModalImage" class="question-image-modal-full" alt="Imagen ampliada">
+                </div>
+                <div class="modal-footer">
+                    <a id="imagePreviewModalDownload" class="btn btn-primary" download>Descargar imagen</a>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </main>
 {% endblock %}
 

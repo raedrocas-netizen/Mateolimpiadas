@@ -5,6 +5,122 @@ const list = document.getElementById("questionsList");
 const message = document.getElementById("questionMessage");
 let questionRecords = [];
 
+const imageModalElement = document.getElementById("imagePreviewModal");
+const imageModal = bootstrap.Modal.getOrCreateInstance(imageModalElement);
+const imageModalName = document.getElementById("imagePreviewModalName");
+const imageModalImage = document.getElementById("imagePreviewModalImage");
+const imageModalDownload = document.getElementById("imagePreviewModalDownload");
+const imagePreviews = {
+    question: createImagePreview("question", form.elements.imagen, "Imagen de pregunta"),
+    answer: createImagePreview("answer", form.elements.respuesta_imagen, "Imagen de respuesta esperada")
+};
+
+function createImagePreview(key, input, altText) {
+    const root = document.querySelector(`[data-image-preview="${key}"]`);
+    const preview = {
+        key,
+        input,
+        altText,
+        root,
+        empty: root.querySelector("[data-preview-empty]"),
+        file: root.querySelector("[data-preview-file]"),
+        thumbnail: root.querySelector("[data-preview-thumbnail]"),
+        name: root.querySelector("[data-preview-name]"),
+        download: root.querySelector("[data-preview-download]"),
+        url: "",
+        fileName: "",
+        objectUrl: "",
+        savedUrl: "",
+        savedFileName: ""
+    };
+
+    root.querySelectorAll("[data-preview-open]").forEach(control => {
+        control.addEventListener("click", () => openImageModal(preview));
+    });
+    input.addEventListener("change", () => previewSelectedImage(preview));
+    return preview;
+}
+
+function revokeObjectUrl(preview) {
+    if (!preview.objectUrl) {
+        return;
+    }
+
+    URL.revokeObjectURL(preview.objectUrl);
+    preview.objectUrl = "";
+}
+
+function setImagePreview(preview, url = "", fileName = "", objectUrl = false) {
+    revokeObjectUrl(preview);
+    preview.url = url || "";
+    preview.fileName = fileName || "Imagen";
+    preview.objectUrl = objectUrl ? preview.url : "";
+
+    if (!preview.url) {
+        preview.thumbnail.removeAttribute("src");
+        preview.name.textContent = "";
+        preview.name.removeAttribute("title");
+        preview.download.removeAttribute("href");
+        preview.download.removeAttribute("download");
+        preview.file.classList.add("d-none");
+        preview.empty.classList.remove("d-none");
+        return;
+    }
+
+    preview.thumbnail.src = preview.url;
+    preview.thumbnail.alt = `${preview.altText}: ${preview.fileName}`;
+    preview.name.textContent = preview.fileName;
+    preview.name.title = preview.fileName;
+    preview.download.href = preview.url;
+    preview.download.download = preview.fileName;
+    preview.empty.classList.add("d-none");
+    preview.file.classList.remove("d-none");
+}
+
+function clearImagePreview(preview) {
+    preview.savedUrl = "";
+    preview.savedFileName = "";
+    setImagePreview(preview);
+}
+
+function setSavedImagePreview(preview, url = "", fileName = "") {
+    preview.savedUrl = url || "";
+    preview.savedFileName = fileName || "";
+    setImagePreview(preview, preview.savedUrl, preview.savedFileName);
+}
+
+function previewSelectedImage(preview) {
+    const file = preview.input.files?.[0];
+
+    if (!file) {
+        return;
+    }
+
+    if (!file.type || !file.type.startsWith("image/")) {
+        preview.input.value = "";
+        setImagePreview(preview, preview.savedUrl, preview.savedFileName);
+        setQuestionMessage(`El archivo "${file.name}" no es una imagen valida.`, false);
+        return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setImagePreview(preview, objectUrl, file.name, true);
+    setQuestionMessage(`Vista previa lista: ${file.name}`, true);
+}
+
+function openImageModal(preview) {
+    if (!preview.url) {
+        return;
+    }
+
+    imageModalName.textContent = preview.fileName;
+    imageModalImage.src = preview.url;
+    imageModalImage.alt = `${preview.altText} ampliada: ${preview.fileName}`;
+    imageModalDownload.href = preview.url;
+    imageModalDownload.download = preview.fileName;
+    imageModal.show();
+}
+
 function setQuestionMessage(text, success = true) {
     message.textContent = text || "";
     message.classList.toggle("text-danger", !success);
@@ -42,6 +158,8 @@ function resetForm(clearMessage = true) {
     form.nombre_imagen.value = "";
     form.respuesta_id_ruta_imagen.value = "";
     form.respuesta_nombre_imagen.value = "";
+    clearImagePreview(imagePreviews.question);
+    clearImagePreview(imagePreviews.answer);
 
     if (clearMessage) {
         setQuestionMessage("");
@@ -61,7 +179,7 @@ function renderQuestions() {
                 </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-secondary" onclick="editQuestion(${pregunta.id_pregunta})">Editar</button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${pregunta.id_pregunta})">Eliminar</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteQuestion(${pregunta.id_pregunta}, this)">Eliminar</button>
                 </div>
             </div>
         `;
@@ -117,24 +235,84 @@ function editQuestion(idPregunta) {
     form.respuesta_descripcion.value = record.respuesta?.descripcion || "";
     form.respuesta_nombre_imagen.value = record.respuesta?.nombre_imagen || "";
     form.respuesta_id_ruta_imagen.value = record.respuesta?.ruta_imagen?.id_ruta || "";
+    setSavedImagePreview(
+        imagePreviews.question,
+        record.pregunta.imagen || "",
+        record.pregunta.nombre_imagen || "Imagen de pregunta"
+    );
+    setSavedImagePreview(
+        imagePreviews.answer,
+        record.respuesta?.imagen || "",
+        record.respuesta?.nombre_imagen || "Imagen de respuesta"
+    );
     setQuestionMessage("Editando pregunta seleccionada.", true);
 }
 
-function deleteQuestion(idPregunta) {
-    apiFetch(`/api/preguntas/${idPregunta}`, {method: "DELETE"}).then(payload => {
+function questionFragment(idPregunta) {
+    const record = questionRecords.find(item => item.pregunta.id_pregunta === idPregunta);
+    const statement = String(record?.pregunta?.enunciado || "esta pregunta")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    return statement.length > 120
+        ? `${statement.slice(0, 117)}...`
+        : statement;
+}
+
+async function deleteQuestion(idPregunta, button) {
+    if (button?.disabled) {
+        return;
+    }
+
+    const fragment = questionFragment(idPregunta);
+    const confirmed = window.confirm(
+        `¿Eliminar la pregunta "${fragment}"?\n\nEsta accion no se puede deshacer.`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const originalText = button?.textContent || "Eliminar";
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Eliminando...";
+    }
+    setQuestionMessage("Eliminando pregunta...", true);
+
+    try {
+        const payload = await apiFetch(`/api/preguntas/${idPregunta}`, {method: "DELETE"});
+
         if (!payload.success) {
             setQuestionMessage(payload.message || "No fue posible eliminar la pregunta.", false);
             return;
         }
-        resetForm();
+
         questionRecords = questionRecords.filter(
             item => item.pregunta.id_pregunta !== idPregunta
         );
+
+        if (Number(form.id_pregunta.value) === Number(idPregunta)) {
+            resetForm(false);
+        }
+
         renderQuestions();
-    });
+        setQuestionMessage(payload.message || "Pregunta eliminada correctamente.", true);
+    } catch (error) {
+        setQuestionMessage(
+            "No fue posible comunicarse con el servidor para eliminar la pregunta.",
+            false
+        );
+    } finally {
+        if (button?.isConnected) {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
 }
 
-document.getElementById("newQuestion").addEventListener("click", resetForm);
+document.getElementById("newQuestion").addEventListener("click", () => resetForm());
 
 form.addEventListener("submit", event => {
     event.preventDefault();
@@ -234,3 +412,7 @@ form.addEventListener("submit", event => {
 });
 
 loadQuestions();
+
+window.addEventListener("beforeunload", () => {
+    Object.values(imagePreviews).forEach(revokeObjectUrl);
+});

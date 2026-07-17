@@ -403,7 +403,11 @@ def pregunta_detail(id_pregunta):
                 )
         ):
             return error_json("La pregunta no pertenece a este juez.", 403)
-        return json_result(business.delete(id_pregunta))
+        result = business.delete(id_pregunta)
+        return json_result(
+            result,
+            200 if result.get_success() else 409
+        )
 
     data = payload()
     pregunta = business.get_by_id(id_pregunta) or Pregunta()
