@@ -148,6 +148,16 @@ class PreguntaBusiness:
 
         result = BusinessResult()
 
+        if self.__pregunta_dao.count_game_uses(
+                id_pregunta
+        ) > 0:
+
+            result.set_message(
+                "Esta pregunta no puede eliminarse porque ya fue utilizada en una partida."
+            )
+
+            return result
+
         if self.__pregunta_dao.delete(
                 id_pregunta
         ):
@@ -161,6 +171,16 @@ class PreguntaBusiness:
             )
 
         else:
+
+            if self.__pregunta_dao.count_game_uses(
+                    id_pregunta
+            ) > 0:
+
+                result.set_message(
+                    "Esta pregunta no puede eliminarse porque ya fue utilizada en una partida."
+                )
+
+                return result
 
             result.set_message(
                 "No fue posible eliminar la pregunta."

@@ -83,6 +83,7 @@ function renderCuestionarios() {
             item.nombre,
             `${escapeHtml(item.materia?.nombre || "")} - ${escapeHtml(item.area)} - ${escapeHtml(item.estado)}`,
             `<a class="btn btn-sm btn-primary" href="/juez/cuestionario/${item.id_cuestionario}/preguntas">Preguntas</a>
+             <button class="btn btn-sm btn-outline-secondary" onclick="editCuestionario(${item.id_cuestionario})">Editar</button>
              <button class="btn btn-sm btn-outline-danger" onclick="deleteCuestionario(${item.id_cuestionario})">Eliminar</button>`
         )).join("");
         document.querySelectorAll('select[name="id_cuestionario"], select[name="id_cuestionarios"]').forEach(select => {
@@ -179,6 +180,9 @@ function deleteCuestionario(id) {
         }
 
         cuestionarios = cuestionarios.filter(item => item.id_cuestionario !== id);
+        if (Number($("#cuestionarioForm").id_cuestionario.value) === Number(id)) {
+            resetQuestionnaireForm(false);
+        }
         renderCuestionarios();
         setMessage(message, payload.message || "Cuestionario eliminado correctamente.", true);
     }).catch(() => {
@@ -209,6 +213,45 @@ function editMateria(id, nombre) {
     form.nombre.value = nombre;
 }
 
+function resetQuestionnaireForm(clearMessage = true) {
+    const form = $("#cuestionarioForm");
+    form.reset();
+    form.id_cuestionario.value = "";
+    $("#questionnaireSubmit").textContent = "Guardar cuestionario";
+    $("#cancelQuestionnaireEdit").classList.add("d-none");
+
+    if (clearMessage) {
+        setMessage($("#cuestionarioMessage"), "", true);
+    }
+}
+
+function editCuestionario(id) {
+    const cuestionario = cuestionarios.find(
+        item => Number(item.id_cuestionario) === Number(id)
+    );
+
+    if (!cuestionario) {
+        setMessage($("#cuestionarioMessage"), "No fue posible cargar el cuestionario seleccionado.", false);
+        return;
+    }
+
+    const form = $("#cuestionarioForm");
+    form.id_cuestionario.value = cuestionario.id_cuestionario;
+    form.nombre.value = cuestionario.nombre || "";
+    form.id_materia.value = cuestionario.materia?.id_materia || "";
+    form.area.value = cuestionario.area || "";
+    form.estado.value = cuestionario.estado || "";
+    $("#questionnaireSubmit").textContent = "Actualizar cuestionario";
+    $("#cancelQuestionnaireEdit").classList.remove("d-none");
+    setMessage($("#cuestionarioMessage"), `Editando: ${cuestionario.nombre}`, true);
+    form.nombre.focus();
+}
+
+$("#cancelQuestionnaireEdit").addEventListener("click", () => {
+    resetQuestionnaireForm(false);
+    setMessage($("#cuestionarioMessage"), "Edicion cancelada.", true);
+});
+
 $("#materiaForm").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -236,18 +279,42 @@ $("#materiaForm").addEventListener("submit", event => {
 $("#cuestionarioForm").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
+    const id = form.id_cuestionario.value;
+    const submitButton = $("#questionnaireSubmit");
+    const action = id ? "actualizar" : "guardar";
 
-    apiFetch("/api/cuestionarios", {
-        method: "POST",
+    submitButton.disabled = true;
+    setMessage($("#cuestionarioMessage"), `${id ? "Actualizando" : "Guardando"} cuestionario...`, true);
+
+    apiFetch(id ? `/api/cuestionarios/${id}` : "/api/cuestionarios", {
+        method: id ? "PUT" : "POST",
         body: JSON.stringify(formJson(form))
     }).then(payload => {
         if (!payload.success) {
+            setMessage(
+                $("#cuestionarioMessage"),
+                payload.message || `No fue posible ${action} el cuestionario.`,
+                false
+            );
             return;
         }
 
         cuestionarios = upsertLocal(cuestionarios, payload.data, "id_cuestionario");
         renderCuestionarios();
-        form.reset();
+        resetQuestionnaireForm(false);
+        setMessage(
+            $("#cuestionarioMessage"),
+            payload.message || `Cuestionario ${id ? "actualizado" : "guardado"} correctamente.`,
+            true
+        );
+    }).catch(() => {
+        setMessage(
+            $("#cuestionarioMessage"),
+            `No fue posible comunicarse con el servidor para ${action} el cuestionario.`,
+            false
+        );
+    }).finally(() => {
+        submitButton.disabled = false;
     });
 });
 

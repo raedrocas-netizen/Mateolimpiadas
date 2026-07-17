@@ -366,3 +366,24 @@ class PreguntaDao:
         self.dao.cerrar()
 
         return result
+
+    def count_game_uses(self, id_pregunta):
+
+        if not self.dao.conectar():
+            return 0
+
+        row = self.dao.obtener_uno(
+            """
+            SELECT COUNT(*) AS total
+            FROM partida_preguntas
+            WHERE id_pregunta = ?;
+            """,
+            (id_pregunta,)
+        )
+
+        self.dao.cerrar()
+
+        if row is None:
+            return 0
+
+        return int(row["total"] or 0)

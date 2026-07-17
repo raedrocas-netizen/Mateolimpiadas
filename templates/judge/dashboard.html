@@ -44,8 +44,11 @@
                                 <div class="col-md-3"><select class="form-select" name="id_materia" required></select></div>
                                 <div class="col-md-3"><select class="form-select" name="area" required></select></div>
                                 <div class="col-md-2"><select class="form-select" name="estado" required></select></div>
-                                <div class="col-12"><button class="btn btn-primary">Guardar cuestionario</button></div>
-                                <div class="col-12"><div id="cuestionarioMessage" class="small-message"></div></div>
+                                <div class="col-12 d-flex flex-wrap gap-2">
+                                    <button id="questionnaireSubmit" class="btn btn-primary">Guardar cuestionario</button>
+                                    <button id="cancelQuestionnaireEdit" class="btn btn-outline-secondary d-none" type="button">Cancelar edición</button>
+                                </div>
+                                <div class="col-12"><div id="cuestionarioMessage" class="small-message" role="status" aria-live="polite"></div></div>
                             </form>
                             <div id="cuestionariosList" class="list-panel wide"></div>
                         </div>
