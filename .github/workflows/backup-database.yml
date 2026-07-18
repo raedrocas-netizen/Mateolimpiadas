@@ -1,0 +1,140 @@
+name: Backup Database
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 01:17, hora de Guatemala (UTC-6). Se evita el minuto 0.
+    - cron: "17 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-database
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.BACKUPS_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_MAJOR_VERSION: ${{ vars.POSTGRES_MAJOR_VERSION }}
+
+    steps:
+      - name: Validar configuración
+        shell: bash
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BACKUP_DATABASE_URL}" ]]; then
+            echo "Falta el secret BACKUP_DATABASE_URL." >&2
+            exit 1
+          fi
+          if [[ -z "${BACKUP_ENCRYPTION_PASSWORD}" ]]; then
+            echo "Falta el secret BACKUP_ENCRYPTION_PASSWORD." >&2
+            exit 1
+          fi
+          if [[ ! "${POSTGRES_MAJOR_VERSION}" =~ ^[0-9]+$ ]]; then
+            echo "POSTGRES_MAJOR_VERSION debe contener únicamente el número de versión mayor." >&2
+            exit 1
+          fi
+
+      - name: Preparar directorio temporal
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup_timestamp="$(date -u +'%Y%m%dT%H%M%S%NZ')"
+          backup_dir="${RUNNER_TEMP}/mateolimpiadas-db-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          dump_filename="mateolimpiadas-db-${backup_timestamp}.dump"
+          encrypted_filename="${dump_filename}.enc"
+          metadata_filename="mateolimpiadas-db-${backup_timestamp}-metadata.txt"
+          sha_filename="${encrypted_filename}.sha256"
+          mkdir -p -- "${backup_dir}"
+          chmod 700 "${backup_dir}"
+
+          {
+            echo "BACKUP_TIMESTAMP=${backup_timestamp}"
+            echo "BACKUP_DIR=${backup_dir}"
+            echo "DUMP_FILENAME=${dump_filename}"
+            echo "DUMP_PATH=${backup_dir}/${dump_filename}"
+            echo "ENCRYPTED_FILENAME=${encrypted_filename}"
+            echo "ENCRYPTED_PATH=${backup_dir}/${encrypted_filename}"
+            echo "METADATA_PATH=${backup_dir}/${metadata_filename}"
+            echo "SHA_PATH=${backup_dir}/${sha_filename}"
+            echo "ARTIFACT_NAME=mateolimpiadas-db-${backup_timestamp}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Crear y validar dump PostgreSQL
+        shell: bash
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e BACKUP_DATABASE_URL \
+            -e DUMP_FILENAME \
+            -v "${BACKUP_DIR}:/backup" \
+            "postgres:${POSTGRES_MAJOR_VERSION}" \
+            sh -ceu 'pg_dump --format=custom --no-owner --no-acl --file="/backup/${DUMP_FILENAME}" "${BACKUP_DATABASE_URL}"'
+
+          test -s "${DUMP_PATH}"
+
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${BACKUP_DIR}:/backup:ro" \
+            "postgres:${POSTGRES_MAJOR_VERSION}" \
+            pg_restore --list "/backup/${DUMP_FILENAME}" > /dev/null
+
+          dump_size="$(stat --format='%s' "${DUMP_PATH}")"
+          client_version="$(docker run --rm "postgres:${POSTGRES_MAJOR_VERSION}" pg_dump --version)"
+          created_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          {
+            printf 'created_at_utc=%s\n' "${created_at}"
+            printf 'dump_size_bytes=%s\n' "${dump_size}"
+            printf 'postgres_client=%s\n' "${client_version}"
+            printf 'format=PostgreSQL custom\n'
+            printf 'encryption=AES-256-CBC, PBKDF2, SHA-256, 600000 iterations\n'
+          } > "${METADATA_PATH}"
+
+      - name: Cifrar dump y generar SHA-256
+        shell: bash
+        env:
+          BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+        run: |
+          set -euo pipefail
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
+            -in "${DUMP_PATH}" \
+            -out "${ENCRYPTED_PATH}" \
+            -pass env:BACKUP_ENCRYPTION_PASSWORD
+
+          test -s "${ENCRYPTED_PATH}"
+          rm -f -- "${DUMP_PATH}"
+
+          cd "${BACKUP_DIR}"
+          sha256sum "${ENCRYPTED_FILENAME}" > "${SHA_PATH}"
+
+      - name: Subir artifact cifrado
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ env.ENCRYPTED_PATH }}
+            ${{ env.SHA_PATH }}
+            ${{ env.METADATA_PATH }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Eliminar archivos temporales
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          case "${BACKUP_DIR:-}" in
+            "${RUNNER_TEMP}"/mateolimpiadas-db-*) rm -rf -- "${BACKUP_DIR}" ;;
+          esac
