@@ -30,6 +30,7 @@ from helpers.ownership import (
     is_owned,
     current_owner,
 )
+from helpers.image_cleanup import cleanup_replaced_image
 from helpers.performance import begin_operation, finish_operation, measure_serialization
 from logical_business.cuestionario_business import CuestionarioBusiness
 from logical_business.materia_business import MateriaBusiness
@@ -242,7 +243,7 @@ def cuestionarios():
     cuestionario.set_nombre(data.get("nombre", ""))
     cuestionario.set_materia(materia)
     cuestionario.set_area(data.get("area", ""))
-    cuestionario.set_estado(data.get("estado", sg.QUESTIONNAIRE_STATUS_DRAFT))
+    cuestionario.set_estado(data.get("estado", sg.QUESTIONNAIRE_STATUS_ACTIVE))
     cuestionario.set_fecha_creacion(datetime.now().strftime(sg.DATE_FORMAT))
     result = business.save(cuestionario)
 
@@ -280,11 +281,17 @@ def cuestionario_detail(id_cuestionario):
 
     materia = MateriaBusiness().get_by_id(id_materia)
     cuestionario = business.get_by_id(id_cuestionario) or Cuestionario()
+    current_status = cuestionario.get_estado()
     cuestionario.set_id_cuestionario(id_cuestionario)
     cuestionario.set_nombre(data.get("nombre", ""))
     cuestionario.set_materia(materia)
     cuestionario.set_area(data.get("area", ""))
-    cuestionario.set_estado(data.get("estado", sg.QUESTIONNAIRE_STATUS_DRAFT))
+    cuestionario.set_estado(
+        data.get(
+            "estado",
+            current_status or sg.QUESTIONNAIRE_STATUS_ACTIVE
+        )
+    )
     cuestionario.set_fecha_creacion(cuestionario.get_fecha_creacion() or datetime.now().strftime(sg.DATE_FORMAT))
     result = business.update(cuestionario)
 
@@ -411,6 +418,9 @@ def pregunta_detail(id_pregunta):
 
     data = payload()
     pregunta = business.get_by_id(id_pregunta) or Pregunta()
+    old_route = pregunta.get_ruta_imagen()
+    old_route_id = old_route.get_id_ruta() if old_route else None
+    old_image_name = pregunta.get_nombre_imagen()
     id_cuestionario = int(data.get("id_cuestionario", 0))
     if not is_owned("cuestionarios", "id_cuestionario", id_cuestionario):
         return error_json("El cuestionario no pertenece a este juez.", 403)
@@ -421,6 +431,16 @@ def pregunta_detail(id_pregunta):
     id_ruta = data.get("id_ruta_imagen")
     pregunta.set_ruta_imagen(RutaImagenBusiness().get_by_id(int(id_ruta)) if id_ruta else None)
     result = business.update(pregunta)
+    new_route_id = int(id_ruta) if id_ruta else None
+    new_image_name = pregunta.get_nombre_imagen()
+    cleanup_replaced_image(
+        current_app.static_folder,
+        result.get_success(),
+        old_route_id,
+        old_image_name,
+        new_route_id,
+        new_image_name
+    )
 
     if result.get_success():
         return json_result(
@@ -528,6 +548,9 @@ def respuesta_detail(id_respuesta):
         return error_json("La pregunta no pertenece a este juez.", 403)
 
     respuesta = business.get_by_id(id_respuesta) or Respuesta()
+    old_route = respuesta.get_ruta_imagen()
+    old_route_id = old_route.get_id_ruta() if old_route else None
+    old_image_name = respuesta.get_nombre_imagen()
     respuesta.set_id_respuesta(id_respuesta)
     respuesta.set_pregunta(pregunta)
     respuesta.set_descripcion(data.get("descripcion", ""))
@@ -535,6 +558,16 @@ def respuesta_detail(id_respuesta):
     id_ruta = data.get("id_ruta_imagen")
     respuesta.set_ruta_imagen(RutaImagenBusiness().get_by_id(int(id_ruta)) if id_ruta else None)
     result = business.update(respuesta)
+    new_route_id = int(id_ruta) if id_ruta else None
+    new_image_name = respuesta.get_nombre_imagen()
+    cleanup_replaced_image(
+        current_app.static_folder,
+        result.get_success(),
+        old_route_id,
+        old_image_name,
+        new_route_id,
+        new_image_name
+    )
 
     if result.get_success():
         return json_result(

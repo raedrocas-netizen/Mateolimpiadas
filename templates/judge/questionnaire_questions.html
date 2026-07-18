@@ -19,7 +19,10 @@
                 <h1>{{ cuestionario.get_nombre() }}</h1>
                 <p>{{ cuestionario.get_materia().get_nombre() }} - {{ cuestionario.get_area() }} - {{ cuestionario.get_estado() }}</p>
             </div>
-            <button id="newQuestion" class="btn btn-primary">Agregar pregunta</button>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary" href="{{ url_for('judge.dashboard') }}#contentTab">&larr; Volver a cuestionarios</a>
+                <button id="newQuestion" class="btn btn-primary" type="button">Nueva pregunta</button>
+            </div>
         </div>
 
         <div class="row g-4">
@@ -54,8 +57,13 @@
                                     <div class="image-attachment-actions">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-preview-open>Ver</button>
                                         <a class="btn btn-sm btn-outline-secondary" data-preview-download>Descargar</a>
+                                        <button class="btn btn-sm btn-outline-danger" type="button" data-preview-remove aria-label="Quitar imagen de la pregunta">Quitar</button>
                                     </div>
                                 </div>
+                            </div>
+                            <div class="image-attachment-pending d-none" data-preview-pending role="status">
+                                <strong>La imagen se quitará al guardar.</strong>
+                                <small>Puedes cancelar la edición para conservarla.</small>
                             </div>
                         </div>
 
@@ -82,12 +90,21 @@
                                     <div class="image-attachment-actions">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-preview-open>Ver</button>
                                         <a class="btn btn-sm btn-outline-secondary" data-preview-download>Descargar</a>
+                                        <button class="btn btn-sm btn-outline-danger" type="button" data-preview-remove aria-label="Quitar imagen de la respuesta esperada">Quitar</button>
                                     </div>
                                 </div>
                             </div>
+                            <div class="image-attachment-pending d-none" data-preview-pending role="status">
+                                <strong>La imagen se quitará al guardar.</strong>
+                                <small>Puedes cancelar la edición para conservarla.</small>
+                            </div>
                         </div>
 
-                        <button class="btn btn-success">Guardar pregunta</button>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button id="questionSubmit" class="btn btn-success">Agregar pregunta</button>
+                            <button id="cancelQuestionEdit" class="btn btn-outline-secondary d-none" type="button">Cancelar edición</button>
+                            <button id="clearQuestionFields" class="btn btn-outline-secondary" type="button">Limpiar campos</button>
+                        </div>
                         <div id="questionMessage" class="small-message" role="status" aria-live="polite"></div>
                     </form>
                 </div>
@@ -95,9 +112,19 @@
 
             <div class="col-lg-7">
                 <div class="tool-card">
-                    <div class="d-flex justify-content-between align-items-center gap-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
                         <h2 class="mb-0">Preguntas del cuestionario</h2>
-                        <span id="questionCount" class="badge text-bg-light">0 preguntas</span>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span id="questionCount" class="badge text-bg-light">0 preguntas</span>
+                            <button id="refreshQuestions" class="btn btn-sm btn-outline-primary" type="button">Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label" for="questionSearch">Buscar preguntas</label>
+                        <div class="input-group">
+                            <input id="questionSearch" class="form-control" type="search" placeholder="Pregunta o respuesta esperada" autocomplete="off">
+                            <button id="clearQuestionSearch" class="btn btn-outline-secondary" type="button">Limpiar búsqueda</button>
+                        </div>
                     </div>
                     <div id="questionsList" class="list-panel wide question-list"></div>
                 </div>
@@ -130,5 +157,6 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/content_filters.js') }}"></script>
 <script src="{{ url_for('static', filename='js/questionnaire_questions.js') }}"></script>
 {% endblock %}

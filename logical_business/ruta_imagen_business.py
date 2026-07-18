@@ -326,3 +326,30 @@ class RutaImagenBusiness:
             question_uses,
             answer_uses
         )
+
+    def get_attachment_usage_counts(
+            self,
+            id_ruta,
+            image_name
+    ):
+
+        question_uses = (
+            self.__ruta_imagen_dao
+            .count_question_attachment_uses(
+                id_ruta,
+                image_name
+            )
+        )
+
+        answer_uses = (
+            self.__ruta_imagen_dao
+            .count_answer_attachment_uses(
+                id_ruta,
+                image_name
+            )
+        )
+
+        return (
+            question_uses,
+            answer_uses
+        )
