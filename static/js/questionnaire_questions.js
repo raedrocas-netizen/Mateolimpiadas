@@ -3,6 +3,12 @@ const questionnaireId = page.dataset.questionnaireId;
 const form = document.getElementById("questionDetailForm");
 const list = document.getElementById("questionsList");
 const message = document.getElementById("questionMessage");
+const cancelEditButton = document.getElementById("cancelQuestionEdit");
+const clearFieldsButton = document.getElementById("clearQuestionFields");
+const questionSubmitButton = document.getElementById("questionSubmit");
+const questionSearch = document.getElementById("questionSearch");
+const clearQuestionSearch = document.getElementById("clearQuestionSearch");
+const refreshQuestionsButton = document.getElementById("refreshQuestions");
 let questionRecords = [];
 
 const imageModalElement = document.getElementById("imagePreviewModal");
@@ -11,15 +17,29 @@ const imageModalName = document.getElementById("imagePreviewModalName");
 const imageModalImage = document.getElementById("imagePreviewModalImage");
 const imageModalDownload = document.getElementById("imagePreviewModalDownload");
 const imagePreviews = {
-    question: createImagePreview("question", form.elements.imagen, "Imagen de pregunta"),
-    answer: createImagePreview("answer", form.elements.respuesta_imagen, "Imagen de respuesta esperada")
+    question: createImagePreview(
+        "question",
+        form.elements.imagen,
+        form.elements.id_ruta_imagen,
+        form.elements.nombre_imagen,
+        "Imagen de pregunta"
+    ),
+    answer: createImagePreview(
+        "answer",
+        form.elements.respuesta_imagen,
+        form.elements.respuesta_id_ruta_imagen,
+        form.elements.respuesta_nombre_imagen,
+        "Imagen de respuesta esperada"
+    )
 };
 
-function createImagePreview(key, input, altText) {
+function createImagePreview(key, input, routeInput, nameInput, altText) {
     const root = document.querySelector(`[data-image-preview="${key}"]`);
     const preview = {
         key,
         input,
+        routeInput,
+        nameInput,
         altText,
         root,
         empty: root.querySelector("[data-preview-empty]"),
@@ -27,16 +47,21 @@ function createImagePreview(key, input, altText) {
         thumbnail: root.querySelector("[data-preview-thumbnail]"),
         name: root.querySelector("[data-preview-name]"),
         download: root.querySelector("[data-preview-download]"),
+        remove: root.querySelector("[data-preview-remove]"),
+        pending: root.querySelector("[data-preview-pending]"),
         url: "",
         fileName: "",
         objectUrl: "",
         savedUrl: "",
-        savedFileName: ""
+        savedFileName: "",
+        savedRouteId: "",
+        removeRequested: false
     };
 
     root.querySelectorAll("[data-preview-open]").forEach(control => {
         control.addEventListener("click", () => openImageModal(preview));
     });
+    preview.remove.addEventListener("click", () => removeImage(preview));
     input.addEventListener("change", () => previewSelectedImage(preview));
     return preview;
 }
@@ -55,6 +80,8 @@ function setImagePreview(preview, url = "", fileName = "", objectUrl = false) {
     preview.url = url || "";
     preview.fileName = fileName || "Imagen";
     preview.objectUrl = objectUrl ? preview.url : "";
+    preview.removeRequested = false;
+    preview.pending.classList.add("d-none");
 
     if (!preview.url) {
         preview.thumbnail.removeAttribute("src");
@@ -77,16 +104,70 @@ function setImagePreview(preview, url = "", fileName = "", objectUrl = false) {
     preview.file.classList.remove("d-none");
 }
 
+function setPendingRemoval(preview) {
+    revokeObjectUrl(preview);
+    preview.input.value = "";
+    preview.routeInput.value = "";
+    preview.nameInput.value = "";
+    preview.url = "";
+    preview.fileName = "";
+    preview.removeRequested = true;
+    preview.thumbnail.removeAttribute("src");
+    preview.name.textContent = "";
+    preview.download.removeAttribute("href");
+    preview.download.removeAttribute("download");
+    preview.file.classList.add("d-none");
+    preview.empty.classList.add("d-none");
+    preview.pending.classList.remove("d-none");
+}
+
 function clearImagePreview(preview) {
     preview.savedUrl = "";
     preview.savedFileName = "";
+    preview.savedRouteId = "";
     setImagePreview(preview);
 }
 
-function setSavedImagePreview(preview, url = "", fileName = "") {
+function setSavedImagePreview(preview, url = "", fileName = "", routeId = "") {
     preview.savedUrl = url || "";
     preview.savedFileName = fileName || "";
+    preview.savedRouteId = routeId || "";
     setImagePreview(preview, preview.savedUrl, preview.savedFileName);
+}
+
+function restoreSavedImage(preview) {
+    preview.routeInput.value = preview.savedRouteId;
+    preview.nameInput.value = preview.savedFileName;
+    setImagePreview(preview, preview.savedUrl, preview.savedFileName);
+}
+
+function removeImage(preview) {
+    if (preview.objectUrl) {
+        preview.input.value = "";
+        restoreSavedImage(preview);
+        setQuestionMessage(
+            preview.savedUrl
+                ? "Se descartó la imagen seleccionada y se restauró la imagen guardada."
+                : "Se quitó la imagen seleccionada.",
+            true
+        );
+        return;
+    }
+
+    if (!preview.savedUrl || preview.removeRequested) {
+        return;
+    }
+
+    const confirmed = window.confirm(
+        "¿Quitar esta imagen?\n\nLa imagen se quitará cuando guardes los cambios."
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    setPendingRemoval(preview);
+    setQuestionMessage("La imagen se quitará cuando guardes los cambios.", true);
 }
 
 function previewSelectedImage(preview) {
@@ -98,7 +179,7 @@ function previewSelectedImage(preview) {
 
     if (!file.type || !file.type.startsWith("image/")) {
         preview.input.value = "";
-        setImagePreview(preview, preview.savedUrl, preview.savedFileName);
+        restoreSavedImage(preview);
         setQuestionMessage(`El archivo "${file.name}" no es una imagen valida.`, false);
         return;
     }
@@ -149,6 +230,12 @@ function uploadImage(input) {
         });
 }
 
+function setQuestionFormMode(editing) {
+    questionSubmitButton.textContent = editing ? "Guardar cambios" : "Agregar pregunta";
+    cancelEditButton.classList.toggle("d-none", !editing);
+    clearFieldsButton.classList.toggle("d-none", editing);
+}
+
 function resetForm(clearMessage = true) {
     form.reset();
     form.id_pregunta.value = "";
@@ -160,6 +247,7 @@ function resetForm(clearMessage = true) {
     form.respuesta_nombre_imagen.value = "";
     clearImagePreview(imagePreviews.question);
     clearImagePreview(imagePreviews.answer);
+    setQuestionFormMode(false);
 
     if (clearMessage) {
         setQuestionMessage("");
@@ -167,8 +255,14 @@ function resetForm(clearMessage = true) {
 }
 
 function renderQuestions() {
-    document.getElementById("questionCount").textContent = `${questionRecords.length} preguntas`;
-    list.innerHTML = questionRecords.map((record, index) => {
+    const search = questionSearch.value;
+    const filteredRecords = ContentFilters.filterQuestions(questionRecords, search);
+    const hasSearch = Boolean(ContentFilters.normalizeSearch(search));
+    document.getElementById("questionCount").textContent = hasSearch
+        ? `${filteredRecords.length} de ${questionRecords.length} preguntas`
+        : `${questionRecords.length} preguntas`;
+    clearQuestionSearch.disabled = !hasSearch;
+    list.innerHTML = filteredRecords.map((record, index) => {
         const pregunta = record.pregunta;
         const respuesta = record.respuesta;
         return `
@@ -183,7 +277,11 @@ function renderQuestions() {
                 </div>
             </div>
         `;
-    }).join("") || "<div class='text-secondary'>Este cuestionario aun no tiene preguntas.</div>";
+    }).join("") || (
+        hasSearch
+            ? "<div class='text-secondary'>No hay preguntas que coincidan con la búsqueda.</div>"
+            : "<div class='text-secondary'>Este cuestionario aún no tiene preguntas.</div>"
+    );
 }
 
 function upsertQuestionRecord(record) {
@@ -209,14 +307,12 @@ function upsertQuestionRecord(record) {
 function loadQuestions() {
     return apiFetch(`/api/cuestionarios/${questionnaireId}/preguntas-detalle`).then(data => {
         if (!Array.isArray(data)) {
-            questionRecords = [];
-            renderQuestions();
-            setQuestionMessage(data?.message || "No fue posible cargar las preguntas.", false);
-            return;
+            throw new Error(data?.message || "No fue posible cargar las preguntas.");
         }
 
         questionRecords = data;
         renderQuestions();
+        return data;
     });
 }
 
@@ -227,6 +323,7 @@ function editQuestion(idPregunta) {
         return;
     }
 
+    resetForm(false);
     form.id_pregunta.value = record.pregunta.id_pregunta;
     form.id_respuesta.value = record.respuesta?.id_respuesta || "";
     form.enunciado.value = record.pregunta.enunciado || "";
@@ -238,13 +335,16 @@ function editQuestion(idPregunta) {
     setSavedImagePreview(
         imagePreviews.question,
         record.pregunta.imagen || "",
-        record.pregunta.nombre_imagen || "Imagen de pregunta"
+        record.pregunta.nombre_imagen || "",
+        record.pregunta.ruta_imagen?.id_ruta || ""
     );
     setSavedImagePreview(
         imagePreviews.answer,
         record.respuesta?.imagen || "",
-        record.respuesta?.nombre_imagen || "Imagen de respuesta"
+        record.respuesta?.nombre_imagen || "",
+        record.respuesta?.ruta_imagen?.id_ruta || ""
     );
+    setQuestionFormMode(true);
     setQuestionMessage("Editando pregunta seleccionada.", true);
 }
 
@@ -312,12 +412,55 @@ async function deleteQuestion(idPregunta, button) {
     }
 }
 
-document.getElementById("newQuestion").addEventListener("click", () => resetForm());
+document.getElementById("newQuestion").addEventListener("click", () => {
+    resetForm();
+    form.enunciado.focus();
+});
+cancelEditButton.addEventListener("click", () => {
+    resetForm(false);
+    setQuestionMessage("Edición cancelada. Formulario listo para crear una pregunta.", true);
+    form.enunciado.focus();
+});
+
+clearFieldsButton.addEventListener("click", () => {
+    resetForm(false);
+    setQuestionMessage("Campos limpiados.", true);
+    form.enunciado.focus();
+});
+
+questionSearch.addEventListener("input", renderQuestions);
+
+clearQuestionSearch.addEventListener("click", () => {
+    questionSearch.value = "";
+    renderQuestions();
+    questionSearch.focus();
+});
+
+refreshQuestionsButton.addEventListener("click", async () => {
+    refreshQuestionsButton.disabled = true;
+    refreshQuestionsButton.textContent = "Actualizando...";
+    setQuestionMessage("Actualizando lista de preguntas...", true);
+
+    try {
+        await loadQuestions();
+        setQuestionMessage("Lista de preguntas actualizada.", true);
+    } catch (error) {
+        setQuestionMessage(
+            error.message || "No fue posible actualizar las preguntas.",
+            false
+        );
+    } finally {
+        refreshQuestionsButton.disabled = false;
+        refreshQuestionsButton.textContent = "Actualizar";
+    }
+});
 
 form.addEventListener("submit", event => {
     event.preventDefault();
-    setQuestionMessage("Guardando pregunta...", true);
     const wasEditing = Boolean(form.id_pregunta.value);
+    questionSubmitButton.disabled = true;
+    questionSubmitButton.textContent = wasEditing ? "Guardando cambios..." : "Agregando pregunta...";
+    setQuestionMessage("Guardando pregunta...", true);
     let savedQuestionId = form.id_pregunta.value || "";
     let savedQuestion = null;
 
@@ -408,10 +551,16 @@ form.addEventListener("submit", event => {
             }
 
             setQuestionMessage(error.message, false);
+        })
+        .finally(() => {
+            questionSubmitButton.disabled = false;
+            setQuestionFormMode(Boolean(form.id_pregunta.value));
         });
 });
 
-loadQuestions();
+loadQuestions().catch(error => {
+    setQuestionMessage(error.message || "No fue posible cargar las preguntas.", false);
+});
 
 window.addEventListener("beforeunload", () => {
     Object.values(imagePreviews).forEach(revokeObjectUrl);

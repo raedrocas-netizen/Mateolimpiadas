@@ -9,6 +9,7 @@ let liveTotalQuestions = null;
 let materias = [];
 let cuestionarios = [];
 let partidas = [];
+const QUESTIONNAIRE_ACTIVE_STATUS = "ACTIVO";
 
 const $ = selector => document.querySelector(selector);
 
@@ -21,7 +22,7 @@ function optionList(items, valueKey, textKey) {
 }
 
 function row(title, subtitle, actions = "") {
-    return `<div class="list-row"><div><strong>${escapeHtml(title)}</strong><small>${subtitle}</small></div><div>${actions}</div></div>`;
+    return `<div class="list-row"><div><strong>${escapeHtml(title)}</strong><small>${subtitle}</small></div><div class="list-row-actions">${actions}</div></div>`;
 }
 
 function setMessage(target, message, success = true) {
@@ -43,6 +44,7 @@ function loadCatalogs() {
         document.querySelectorAll('select[name="estado"]').forEach(select => {
             select.innerHTML = optionList(data.estados_cuestionario);
         });
+        resetQuestionnaireForm(false);
     });
 }
 
@@ -73,22 +75,40 @@ function renderMaterias() {
 
 function refreshCuestionarios() {
     return apiFetch("/api/cuestionarios").then(items => {
+        if (!Array.isArray(items)) {
+            throw new Error(items?.message || "No fue posible cargar los cuestionarios.");
+        }
+
         cuestionarios = items;
         renderCuestionarios();
+        return items;
     });
 }
 
-function renderCuestionarios() {
-        $("#cuestionariosList").innerHTML = cuestionarios.map(item => row(
+function renderCuestionarios(updateSelectors = true) {
+        const search = $("#questionnaireSearch")?.value || "";
+        const filtered = ContentFilters.filterQuestionnaires(cuestionarios, search);
+        const hasSearch = Boolean(ContentFilters.normalizeSearch(search));
+        $("#cuestionariosList").innerHTML = filtered.map(item => row(
             item.nombre,
             `${escapeHtml(item.materia?.nombre || "")} - ${escapeHtml(item.area)} - ${escapeHtml(item.estado)}`,
             `<a class="btn btn-sm btn-primary" href="/juez/cuestionario/${item.id_cuestionario}/preguntas">Preguntas</a>
              <button class="btn btn-sm btn-outline-secondary" onclick="editCuestionario(${item.id_cuestionario})">Editar</button>
              <button class="btn btn-sm btn-outline-danger" onclick="deleteCuestionario(${item.id_cuestionario})">Eliminar</button>`
-        )).join("");
-        document.querySelectorAll('select[name="id_cuestionario"], select[name="id_cuestionarios"]').forEach(select => {
-            select.innerHTML = optionList(cuestionarios, "id_cuestionario", "nombre");
-        });
+        )).join("") || (
+            hasSearch
+                ? "<div class='text-secondary'>No hay cuestionarios que coincidan con la búsqueda.</div>"
+                : "<div class='text-secondary'>No hay cuestionarios creados.</div>"
+        );
+        $("#questionnaireFilterSummary").textContent = hasSearch
+            ? `${filtered.length} de ${cuestionarios.length} cuestionarios`
+            : `${cuestionarios.length} cuestionarios`;
+        $("#clearQuestionnaireSearch").disabled = !hasSearch;
+        if (updateSelectors) {
+            document.querySelectorAll('select[name="id_cuestionario"], select[name="id_cuestionarios"]').forEach(select => {
+                select.innerHTML = optionList(cuestionarios, "id_cuestionario", "nombre");
+            });
+        }
 }
 
 function upsertLocal(items, item, key) {
@@ -217,8 +237,16 @@ function resetQuestionnaireForm(clearMessage = true) {
     const form = $("#cuestionarioForm");
     form.reset();
     form.id_cuestionario.value = "";
+    if (form.id_materia.options.length) {
+        form.id_materia.selectedIndex = 0;
+    }
+    if (form.area.options.length) {
+        form.area.selectedIndex = 0;
+    }
+    form.estado.value = QUESTIONNAIRE_ACTIVE_STATUS;
     $("#questionnaireSubmit").textContent = "Guardar cuestionario";
     $("#cancelQuestionnaireEdit").classList.add("d-none");
+    $("#clearQuestionnaireFields").classList.remove("d-none");
 
     if (clearMessage) {
         setMessage($("#cuestionarioMessage"), "", true);
@@ -235,6 +263,7 @@ function editCuestionario(id) {
         return;
     }
 
+    resetQuestionnaireForm(false);
     const form = $("#cuestionarioForm");
     form.id_cuestionario.value = cuestionario.id_cuestionario;
     form.nombre.value = cuestionario.nombre || "";
@@ -243,13 +272,49 @@ function editCuestionario(id) {
     form.estado.value = cuestionario.estado || "";
     $("#questionnaireSubmit").textContent = "Actualizar cuestionario";
     $("#cancelQuestionnaireEdit").classList.remove("d-none");
+    $("#clearQuestionnaireFields").classList.add("d-none");
     setMessage($("#cuestionarioMessage"), `Editando: ${cuestionario.nombre}`, true);
     form.nombre.focus();
 }
 
 $("#cancelQuestionnaireEdit").addEventListener("click", () => {
     resetQuestionnaireForm(false);
-    setMessage($("#cuestionarioMessage"), "Edicion cancelada.", true);
+    setMessage($("#cuestionarioMessage"), "Edición cancelada. Formulario listo para crear.", true);
+});
+
+$("#clearQuestionnaireFields").addEventListener("click", () => {
+    resetQuestionnaireForm(false);
+    setMessage($("#cuestionarioMessage"), "Campos limpiados.", true);
+    $("#cuestionarioForm").nombre.focus();
+});
+
+$("#questionnaireSearch").addEventListener("input", () => renderCuestionarios(false));
+
+$("#clearQuestionnaireSearch").addEventListener("click", () => {
+    $("#questionnaireSearch").value = "";
+    renderCuestionarios(false);
+    $("#questionnaireSearch").focus();
+});
+
+$("#refreshQuestionnaires").addEventListener("click", async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Actualizando...";
+    setMessage($("#cuestionarioMessage"), "Actualizando lista de cuestionarios...", true);
+
+    try {
+        await refreshCuestionarios();
+        setMessage($("#cuestionarioMessage"), "Lista de cuestionarios actualizada.", true);
+    } catch (error) {
+        setMessage(
+            $("#cuestionarioMessage"),
+            error.message || "No fue posible actualizar los cuestionarios.",
+            false
+        );
+    } finally {
+        button.disabled = false;
+        button.textContent = "Actualizar";
+    }
 });
 
 $("#materiaForm").addEventListener("submit", event => {

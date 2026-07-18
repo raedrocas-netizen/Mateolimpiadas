@@ -289,3 +289,59 @@ class RutaImagenDao:
 
         return row[0]
 
+    def count_question_attachment_uses(
+            self,
+            id_ruta,
+            image_name
+    ):
+
+        if not self.dao.conectar():
+            return None
+
+        sql = """
+        SELECT COUNT(*)
+        FROM preguntas
+        WHERE id_ruta_imagen = ?
+        AND nombre_imagen = ?;
+        """
+
+        row = self.dao.obtener_uno(
+            sql,
+            (id_ruta, image_name)
+        )
+
+        self.dao.cerrar()
+
+        if row is None:
+            return None
+
+        return row[0]
+
+    def count_answer_attachment_uses(
+            self,
+            id_ruta,
+            image_name
+    ):
+
+        if not self.dao.conectar():
+            return None
+
+        sql = """
+        SELECT COUNT(*)
+        FROM respuestas
+        WHERE id_ruta_imagen = ?
+        AND nombre_imagen = ?;
+        """
+
+        row = self.dao.obtener_uno(
+            sql,
+            (id_ruta, image_name)
+        )
+
+        self.dao.cerrar()
+
+        if row is None:
+            return None
+
+        return row[0]
+
