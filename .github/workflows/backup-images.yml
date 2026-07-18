@@ -1,0 +1,250 @@
+name: Backup Images
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 01:43, hora de Guatemala (UTC-6). Se evita el minuto 0.
+    - cron: "43 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-images
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.BACKUPS_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RENDER_SSH_HOST: ${{ vars.RENDER_SSH_HOST }}
+      RENDER_SSH_USER: ${{ vars.RENDER_SSH_USER }}
+      REMOTE_PROJECT_ROOT: /opt/render/project/src
+      REMOTE_UPLOADS_PATH: /opt/render/project/src/static/uploads
+
+    steps:
+      - name: Validar configuración
+        shell: bash
+        env:
+          RENDER_SSH_PRIVATE_KEY: ${{ secrets.RENDER_SSH_PRIVATE_KEY }}
+          RENDER_SSH_KNOWN_HOSTS: ${{ vars.RENDER_SSH_KNOWN_HOSTS }}
+          BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RENDER_SSH_PRIVATE_KEY}" ]]; then
+            echo "Falta el secret RENDER_SSH_PRIVATE_KEY." >&2
+            exit 1
+          fi
+          if [[ -z "${BACKUP_ENCRYPTION_PASSWORD}" ]]; then
+            echo "Falta el secret BACKUP_ENCRYPTION_PASSWORD." >&2
+            exit 1
+          fi
+          if [[ -z "${RENDER_SSH_KNOWN_HOSTS}" ]]; then
+            echo "Falta la variable RENDER_SSH_KNOWN_HOSTS." >&2
+            exit 1
+          fi
+          if [[ ! "${RENDER_SSH_HOST}" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
+            echo "RENDER_SSH_HOST tiene un formato no permitido." >&2
+            exit 1
+          fi
+          if [[ ! "${RENDER_SSH_USER}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "RENDER_SSH_USER tiene un formato no permitido." >&2
+            exit 1
+          fi
+
+      - name: Configurar SSH con verificación de host
+        shell: bash
+        env:
+          RENDER_SSH_PRIVATE_KEY: ${{ secrets.RENDER_SSH_PRIVATE_KEY }}
+          RENDER_SSH_KNOWN_HOSTS: ${{ vars.RENDER_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ssh_dir="${HOME}/.ssh"
+          ssh_key_path="${ssh_dir}/mateolimpiadas_backup_key"
+          ssh_known_hosts_path="${ssh_dir}/mateolimpiadas_known_hosts"
+          install -d -m 700 "${ssh_dir}"
+          printf '%s\n' "${RENDER_SSH_PRIVATE_KEY}" | tr -d '\r' > "${ssh_key_path}"
+          printf '%s\n' "${RENDER_SSH_KNOWN_HOSTS}" | tr -d '\r' > "${ssh_known_hosts_path}"
+          chmod 600 "${ssh_key_path}" "${ssh_known_hosts_path}"
+
+          {
+            echo "SSH_KEY_PATH=${ssh_key_path}"
+            echo "SSH_KNOWN_HOSTS_PATH=${ssh_known_hosts_path}"
+          } >> "${GITHUB_ENV}"
+
+          if ! ssh-keygen -F "${RENDER_SSH_HOST}" -f "${ssh_known_hosts_path}" > /dev/null; then
+            echo "RENDER_SSH_KNOWN_HOSTS no contiene una entrada para RENDER_SSH_HOST." >&2
+            exit 1
+          fi
+
+      - name: Confirmar conectividad y acceso de solo lectura
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "${SSH_KEY_PATH}" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_PATH}" \
+            -o ConnectTimeout=20 \
+            "${RENDER_SSH_USER}@${RENDER_SSH_HOST}" \
+            "test -d '${REMOTE_UPLOADS_PATH}' && test -r '${REMOTE_UPLOADS_PATH}'"
+
+      - name: Preparar directorio temporal
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup_timestamp="$(date -u +'%Y%m%dT%H%M%S%NZ')"
+          created_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          backup_dir="${RUNNER_TEMP}/mateolimpiadas-images-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          raw_tar_filename="mateolimpiadas-images-${backup_timestamp}.tar"
+          inventory_filename="mateolimpiadas-images-${backup_timestamp}-inventory.json"
+          package_filename="mateolimpiadas-images-${backup_timestamp}.tar.gz"
+          encrypted_filename="${package_filename}.enc"
+          sha_filename="${encrypted_filename}.sha256"
+          mkdir -p -- "${backup_dir}"
+          chmod 700 "${backup_dir}"
+
+          {
+            echo "BACKUP_TIMESTAMP=${backup_timestamp}"
+            echo "BACKUP_CREATED_AT=${created_at}"
+            echo "BACKUP_DIR=${backup_dir}"
+            echo "RAW_TAR_FILENAME=${raw_tar_filename}"
+            echo "RAW_TAR_PATH=${backup_dir}/${raw_tar_filename}"
+            echo "INVENTORY_FILENAME=${inventory_filename}"
+            echo "INVENTORY_PATH=${backup_dir}/${inventory_filename}"
+            echo "PACKAGE_FILENAME=${package_filename}"
+            echo "PACKAGE_PATH=${backup_dir}/${package_filename}"
+            echo "ENCRYPTED_FILENAME=${encrypted_filename}"
+            echo "ENCRYPTED_PATH=${backup_dir}/${encrypted_filename}"
+            echo "SHA_PATH=${backup_dir}/${sha_filename}"
+            echo "ARTIFACT_NAME=mateolimpiadas-images-${backup_timestamp}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Transmitir uploads sin comprimir desde Render
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "${SSH_KEY_PATH}" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="${SSH_KNOWN_HOSTS_PATH}" \
+            "${RENDER_SSH_USER}@${RENDER_SSH_HOST}" \
+            "tar -C '${REMOTE_PROJECT_ROOT}' -cf - static/uploads" \
+            > "${RAW_TAR_PATH}"
+
+          test -s "${RAW_TAR_PATH}"
+          tar -tf "${RAW_TAR_PATH}" > /dev/null
+
+      - name: Crear inventario y validar rutas
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "${RAW_TAR_PATH}" "${INVENTORY_PATH}" "${BACKUP_CREATED_AT}" <<'PY'
+          import json
+          import sys
+          import tarfile
+          from pathlib import PurePosixPath
+
+          tar_path, inventory_path, created_at = sys.argv[1:]
+          entries = []
+          file_count = 0
+          total_size = 0
+
+          with tarfile.open(tar_path, mode="r:") as archive:
+              for member in archive.getmembers():
+                  path = PurePosixPath(member.name)
+                  normalized = path.as_posix().rstrip("/")
+                  if (
+                      path.is_absolute()
+                      or ".." in path.parts
+                      or not (
+                          normalized == "static/uploads"
+                          or normalized.startswith("static/uploads/")
+                      )
+                  ):
+                      raise SystemExit(f"Ruta no permitida en el archivo: {member.name!r}")
+                  if member.issym() or member.islnk():
+                      raise SystemExit(f"No se permiten enlaces en uploads: {member.name!r}")
+                  if not (member.isdir() or member.isfile()):
+                      raise SystemExit(f"Tipo de entrada no permitido: {member.name!r}")
+
+                  entry_type = "directory" if member.isdir() else "file"
+                  size = member.size if member.isfile() else 0
+                  entries.append({"path": normalized, "type": entry_type, "size_bytes": size})
+                  if member.isfile():
+                      file_count += 1
+                      total_size += member.size
+
+          inventory = {
+              "created_at_utc": created_at,
+              "source": "/opt/render/project/src/static/uploads",
+              "file_count": file_count,
+              "total_size_bytes": total_size,
+              "entries": entries,
+          }
+          with open(inventory_path, "w", encoding="utf-8", newline="\n") as handle:
+              json.dump(inventory, handle, ensure_ascii=False, indent=2)
+              handle.write("\n")
+          PY
+
+          test -s "${INVENTORY_PATH}"
+
+      - name: Comprimir y validar paquete en el runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "${PACKAGE_PATH}" \
+            -C "${BACKUP_DIR}" \
+            "${RAW_TAR_FILENAME}" \
+            "${INVENTORY_FILENAME}"
+
+          test -s "${PACKAGE_PATH}"
+          gzip -t "${PACKAGE_PATH}"
+          tar -tzf "${PACKAGE_PATH}" > /dev/null
+          tar -xOzf "${PACKAGE_PATH}" "${INVENTORY_FILENAME}" | python3 -m json.tool > /dev/null
+
+      - name: Cifrar paquete y generar SHA-256
+        shell: bash
+        env:
+          BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+        run: |
+          set -euo pipefail
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
+            -in "${PACKAGE_PATH}" \
+            -out "${ENCRYPTED_PATH}" \
+            -pass env:BACKUP_ENCRYPTION_PASSWORD
+
+          test -s "${ENCRYPTED_PATH}"
+          rm -f -- "${RAW_TAR_PATH}" "${INVENTORY_PATH}" "${PACKAGE_PATH}"
+
+          cd "${BACKUP_DIR}"
+          sha256sum "${ENCRYPTED_FILENAME}" > "${SHA_PATH}"
+
+      - name: Subir artifact cifrado
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ env.ENCRYPTED_PATH }}
+            ${{ env.SHA_PATH }}
+          if-no-files-found: error
+          retention-days: 60
+          compression-level: 0
+
+      - name: Eliminar archivos temporales y credenciales SSH
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          case "${BACKUP_DIR:-}" in
+            "${RUNNER_TEMP}"/mateolimpiadas-images-*) rm -rf -- "${BACKUP_DIR}" ;;
+          esac
+          rm -f -- \
+            "${SSH_KEY_PATH:-${HOME}/.ssh/mateolimpiadas_backup_key}" \
+            "${SSH_KNOWN_HOSTS_PATH:-${HOME}/.ssh/mateolimpiadas_known_hosts}"
