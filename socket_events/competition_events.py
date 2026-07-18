@@ -103,6 +103,26 @@ def emit_to_participant(socketio, event, payload, participant_code):
         )
 
 
+def emit_question_action_result(socketio, result, game_code):
+    public_payload = {
+        "success": result.get_success(),
+        "message": result.get_message()
+    }
+    with measure("SocketIO"):
+        socketio.emit(
+            "resultado_accion",
+            public_payload,
+            room=game_room(game_code)
+        )
+
+    emit_to_judge(
+        socketio,
+        "resultado_accion",
+        business_result_to_dict(result),
+        game_code
+    )
+
+
 def stop_timer(game_code):
     active_timer_tokens[str(game_code).strip().upper()] = None
 
@@ -388,7 +408,7 @@ def countdown_and_start(socketio, game_code, id_partida):
         if result.get_success():
             emit_question_start(socketio, business, game_code, id_partida, result.get_data())
 
-        emit_live_event(socketio, "resultado_accion", business_result_to_dict(result), game_code)
+        emit_question_action_result(socketio, result, game_code)
 
 
 def countdown_and_advance(socketio, game_code, id_partida):
@@ -412,7 +432,7 @@ def countdown_and_advance(socketio, game_code, id_partida):
         if result.get_success():
             emit_question_start(socketio, business, game_code, id_partida, result.get_data())
 
-        emit_live_event(socketio, "resultado_accion", business_result_to_dict(result), game_code)
+        emit_question_action_result(socketio, result, game_code)
 
 
 def register_socket_events(socketio):
