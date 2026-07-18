@@ -52,7 +52,8 @@ def game_question_to_dict(question, include_answer=False):
                 "respuesta_correcta",
                 "nombre_imagen_respuesta",
                 "ruta_respuesta",
-                "descripcion_ruta_respuesta"
+                "descripcion_ruta_respuesta",
+                "imagen_respuesta"
         ):
             payload.pop(key, None)
 
