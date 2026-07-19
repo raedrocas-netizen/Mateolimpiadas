@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Uploads generados por la aplicación
+/static/uploads/
+
+# IDE / sistema operativo
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

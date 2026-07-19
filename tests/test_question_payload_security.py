@@ -86,6 +86,9 @@ class FakeSocketIO:
 
 class FakePartida:
 
+    def __init__(self, state="EN_CURSO"):
+        self.state = state
+
     def get_id_partida(self):
         return 1
 
@@ -108,7 +111,7 @@ class FakePartida:
         return 0
 
     def get_estado(self):
-        return "EN_CURSO"
+        return self.state
 
     def get_pregunta_actual(self):
         return 1
@@ -125,8 +128,11 @@ class FakePartida:
 
 class FakeLiveStateBusiness:
 
+    def __init__(self, state="EN_CURSO"):
+        self.state = state
+
     def get_by_code(self, game_code):
-        return FakePartida()
+        return FakePartida(self.state)
 
     def get_waiting_room_status(self, id_partida):
         return []
@@ -145,7 +151,7 @@ class FakeLiveStateBusiness:
             "remaining": 30,
             "exhausted": False,
             "active_since": None,
-            "game_state": "EN_CURSO"
+            "game_state": self.state
         }
 
 
@@ -347,6 +353,59 @@ class QuestionPayloadSecurityTests(unittest.TestCase):
             judge_state["pregunta"]["imagen_respuesta"],
             "/static/img/respuestas/respuesta.png"
         )
+
+    def test_paused_reconnection_hides_public_question_but_keeps_judge_question(self):
+        business = FakeLiveStateBusiness(state="PAUSADA")
+
+        with patch.object(
+                competition_events,
+                "PartidaBusiness",
+                return_value=business
+        ):
+            reconnect_state = competition_events.build_live_state("ABC123")
+            judge_state = competition_events.build_live_state(
+                "ABC123",
+                include_answer=True
+            )
+
+        self.assertIsNone(reconnect_state["pregunta"])
+        self.assertEqual(reconnect_state["estado_competencia"], "PARTIDA PAUSADA")
+        self.assertEqual(
+            judge_state["pregunta"]["respuesta_correcta"],
+            "Respuesta reservada"
+        )
+
+    def test_paused_emit_state_sends_no_question_to_participant_or_display(self):
+        socketio = FakeSocketIO()
+
+        with patch.object(
+                competition_events,
+                "PartidaBusiness",
+                return_value=FakeLiveStateBusiness(state="PAUSADA")
+        ):
+            competition_events.emit_state(socketio, "ABC123")
+
+        participant_state = self.emissions_for(
+            socketio,
+            "estado_sala",
+            competition_events.game_room("ABC123")
+        )[0]
+        display_state = self.emissions_for(
+            socketio,
+            "estado_sala",
+            competition_events.display_room("ABC123")
+        )[0]
+        judge_state = self.emissions_for(
+            socketio,
+            "estado_sala",
+            competition_events.judge_room("ABC123")
+        )[0]
+
+        self.assertIsNone(participant_state["pregunta"])
+        self.assertIsNone(display_state["pregunta"])
+        self.assertIsNotNone(judge_state["pregunta"])
+        self.assert_public_payload(participant_state)
+        self.assert_public_payload(display_state)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ const teamScore = document.getElementById("teamScore");
 const podiumTitle = document.getElementById("podiumTitle");
 let hasRequestedForQuestion = false;
 let hasAnsweredForQuestion = false;
+let participantQuestionId = null;
+let participantPaused = false;
 
 document.getElementById("teamName").textContent = participantSession.nombre_equipo || "Equipo";
 document.getElementById("roomCode").textContent = participantSession.codigo_partida || "";
@@ -55,6 +57,7 @@ function showFinalPodium(rankingData) {
         item => item.participant_code === participantSession.codigo_participante
     );
 
+    leaveParticipantPaused();
     document.querySelector(".participant-view")?.classList.add("podium-mode");
     requestButton.classList.add("d-none");
     requestButton.disabled = true;
@@ -78,7 +81,50 @@ function renderParticipantQuestion(question) {
     }
 }
 
+function clearParticipantQuestion() {
+    questionImage.removeAttribute("src");
+    questionImage.classList.add("d-none");
+}
+
+function syncParticipantQuestion(question, ownRequest = null) {
+    const questionId = question?.id_partida_pregunta || null;
+
+    if (questionId && String(questionId) !== String(participantQuestionId || "")) {
+        participantQuestionId = questionId;
+        hasRequestedForQuestion = false;
+        hasAnsweredForQuestion = false;
+    }
+
+    if (ownRequest) {
+        hasRequestedForQuestion = true;
+        hasAnsweredForQuestion = ["CORRECTA", "INCORRECTA"].includes(ownRequest.estado);
+    }
+}
+
+function showParticipantPaused() {
+    participantPaused = true;
+    document.querySelector(".participant-view")?.classList.add("is-paused");
+    requestButton.disabled = true;
+    requestButton.classList.add("d-none");
+    finalActions.classList.add("d-none");
+    podiumTitle.classList.add("d-none");
+    clearParticipantQuestion();
+    setParticipantStatus(
+        "PARTIDA PAUSADA",
+        "Espera a que el juez reanude la partida."
+    );
+}
+
+function leaveParticipantPaused() {
+    participantPaused = false;
+    document.querySelector(".participant-view")?.classList.remove("is-paused");
+}
+
 requestButton.addEventListener("click", () => {
+    if (participantPaused) {
+        return;
+    }
+
     playSound("request");
     hasRequestedForQuestion = true;
     requestButton.disabled = true;
@@ -90,6 +136,15 @@ socket.on("estado_sala", state => {
     renderParticipantTimer(state.timer, state.partida?.tiempo_por_pregunta);
     renderRanking(rankingEl, state.ranking);
     const ownRequest = ownWordRequest(state.solicitudes);
+    syncParticipantQuestion(state.pregunta, ownRequest);
+
+    if (state.partida?.estado === "PAUSADA") {
+        showParticipantPaused();
+        return;
+    }
+
+    leaveParticipantPaused();
+    requestButton.classList.remove("d-none");
 
     if (state.estado_competencia === "Esperando respuesta") {
         statusEl.textContent = state.estado_competencia;
@@ -149,13 +204,16 @@ socket.on("estado_sala", state => {
 });
 
 socket.on("mostrar_pregunta", question => {
+    if (participantPaused) {
+        return;
+    }
+
     if (Number(question?.numero_orden) === 1) {
         playSound("start");
     }
     resetTimerSound("participant");
     document.querySelector(".participant-view")?.classList.remove("podium-mode");
-    hasRequestedForQuestion = false;
-    hasAnsweredForQuestion = false;
+    syncParticipantQuestion(question);
     renderParticipantQuestion(question);
     statusEl.textContent = "Pregunta en curso";
     requestButton.classList.remove("d-none");
@@ -165,6 +223,10 @@ socket.on("mostrar_pregunta", question => {
 });
 
 socket.on("estado_competencia", event => {
+    if (participantPaused && event.estado !== "Competencia finalizada") {
+        return;
+    }
+
     if (event.contador === 5) {
         playSound("countdown");
     }
@@ -181,6 +243,10 @@ socket.on("estado_competencia", event => {
 });
 
 socket.on("actualizar_cronometro", timer => {
+    if (participantPaused) {
+        return;
+    }
+
     renderParticipantTimer(timer);
     if (timer?.exhausted) {
         requestButton.disabled = true;
@@ -189,6 +255,10 @@ socket.on("actualizar_cronometro", timer => {
 });
 
 socket.on("habilitar_respuesta", request => {
+    if (participantPaused) {
+        return;
+    }
+
     if (request.codigo_participante === participantSession.codigo_participante) {
         playSound("turn");
         hasRequestedForQuestion = true;
@@ -200,6 +270,10 @@ socket.on("habilitar_respuesta", request => {
 });
 
 socket.on("estado_palabra", request => {
+    if (participantPaused) {
+        return;
+    }
+
     playSound("turn");
     if (request.codigo_participante === participantSession.codigo_participante) {
         hasRequestedForQuestion = true;
@@ -220,6 +294,10 @@ socket.on("estado_palabra", request => {
 });
 
 socket.on("resultado_respuesta", payload => {
+    if (participantPaused) {
+        return;
+    }
+
     const request = payload?.request;
 
     if (!request || request.codigo_participante !== participantSession.codigo_participante) {

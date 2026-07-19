@@ -757,10 +757,19 @@ def subir_imagen():
 def estado_partida(id_partida):
     business = PartidaBusiness()
     partida = business.get_by_id(id_partida)
+    is_judge = session.get("judge_authenticated") is True
     pregunta = game_question_to_dict(
         business.get_current_question(id_partida),
-        include_answer=session.get("judge_authenticated") is True
+        include_answer=is_judge
     )
+
+    if (
+            partida is not None
+            and partida.get_estado() == sg.GAME_STATUS_PAUSED
+            and not is_judge
+    ):
+        pregunta = None
+
     solicitudes = current_question_requests(
         serialize_any(business.get_word_requests(id_partida)),
         pregunta
