@@ -76,6 +76,11 @@
 </div>
 {% endblock %}
 
+{% block vendor_scripts %}
+<script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/socket.io/socket.io.min.js') }}"></script>
+{% endblock %}
+
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/participant_room_helpers.js') }}"></script>

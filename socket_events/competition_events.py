@@ -10,7 +10,12 @@ from helpers.serializers import (
     partida_to_dict,
     serialize_any
 )
-from helpers.performance import measure, performance_operation, socket_event_performance
+from helpers.performance import (
+    measure,
+    performance_operation,
+    record_socket_payload,
+    socket_event_performance
+)
 from logical_business.business_result import BusinessResult
 from logical_business.partida_business import PartidaBusiness
 
@@ -48,6 +53,7 @@ def live_rooms(game_code):
 
 def emit_live_event(socketio, event, payload, game_code):
     for room in live_rooms(game_code):
+        record_socket_payload(event, payload)
         with measure("SocketIO"):
             socketio.emit(event, payload, room=room)
 
@@ -57,33 +63,39 @@ def emit_live_event(socketio, event, payload, game_code):
             "actualizar_puntajes",
             "mostrar_podio"
     ):
+        record_socket_payload(event, payload)
         with measure("SocketIO"):
             socketio.emit(event, payload, room=display_room(game_code))
 
 
 def emit_question(socketio, question, game_code):
     public_question = game_question_to_dict(question, include_answer=False)
+    record_socket_payload("mostrar_pregunta", public_question)
     with measure("SocketIO"):
         socketio.emit(
             "mostrar_pregunta",
             public_question,
             room=game_room(game_code)
         )
+    record_socket_payload("mostrar_pregunta", public_question)
     with measure("SocketIO"):
         socketio.emit(
             "mostrar_pregunta",
             public_question,
             room=display_room(game_code)
         )
+    judge_question = game_question_to_dict(question, include_answer=True)
+    record_socket_payload("mostrar_pregunta", judge_question)
     with measure("SocketIO"):
         socketio.emit(
             "mostrar_pregunta",
-            game_question_to_dict(question, include_answer=True),
+            judge_question,
             room=judge_room(game_code)
         )
 
 
 def emit_to_judge(socketio, event, payload, game_code):
+    record_socket_payload(event, payload)
     with measure("SocketIO"):
         socketio.emit(
             event,
@@ -93,6 +105,7 @@ def emit_to_judge(socketio, event, payload, game_code):
 
 
 def emit_to_display(socketio, event, payload, game_code):
+    record_socket_payload(event, payload)
     with measure("SocketIO"):
         socketio.emit(
             event,
@@ -102,6 +115,7 @@ def emit_to_display(socketio, event, payload, game_code):
 
 
 def emit_to_participant(socketio, event, payload, participant_code):
+    record_socket_payload(event, payload)
     with measure("SocketIO"):
         socketio.emit(
             event,
@@ -115,6 +129,7 @@ def emit_question_action_result(socketio, result, game_code):
         "success": result.get_success(),
         "message": result.get_message()
     }
+    record_socket_payload("resultado_accion", public_payload)
     with measure("SocketIO"):
         socketio.emit(
             "resultado_accion",
@@ -131,7 +146,10 @@ def emit_question_action_result(socketio, result, game_code):
 
 
 def stop_timer(game_code):
-    active_timer_tokens[str(game_code).strip().upper()] = None
+    normalized_code = str(game_code).strip().upper()
+
+    with action_state_lock:
+        active_timer_tokens.pop(normalized_code, None)
 
 
 def action_error(message):
@@ -369,7 +387,12 @@ def build_live_state(game_code, include_answer=False):
         "participantes": participantes,
         "pregunta": pregunta,
         "solicitudes": solicitudes,
-        "ranking": serialize_any(business.get_live_ranking(partida.get_codigo_partida())),
+        "ranking": serialize_any(
+            business.get_live_ranking(
+                partida.get_codigo_partida(),
+                partida=partida
+            )
+        ),
         "timer": serialize_any(business.get_timer_status(id_partida)),
         "estado_competencia": status["estado"],
         "mensaje_estado": status["mensaje"]
@@ -381,11 +404,13 @@ def build_live_state(game_code, include_answer=False):
     return public_live_state(state)
 
 
+@socket_event_performance("emit_state")
 def emit_state(socketio, game_code):
     judge_state = build_live_state(game_code, include_answer=True)
 
     if judge_state is not None:
         participant_state = public_live_state(judge_state)
+        record_socket_payload("estado_sala", participant_state)
         with measure("SocketIO"):
             socketio.emit(
                 "estado_sala",
@@ -393,6 +418,7 @@ def emit_state(socketio, game_code):
                 room=game_room(game_code)
             )
 
+        record_socket_payload("estado_sala", judge_state)
         with measure("SocketIO"):
             socketio.emit(
                 "estado_sala",
@@ -400,6 +426,7 @@ def emit_state(socketio, game_code):
                 room=judge_room(game_code)
             )
 
+        record_socket_payload("estado_sala", participant_state)
         with measure("SocketIO"):
             socketio.emit(
                 "estado_sala",
@@ -435,7 +462,8 @@ def start_timer_from_payload(socketio, game_code, id_partida, timer):
         return
 
     token = uuid4().hex
-    active_timer_tokens[str(game_code).strip().upper()] = token
+    with action_state_lock:
+        active_timer_tokens[str(game_code).strip().upper()] = token
     socketio.start_background_task(
         timer_loop,
         socketio,
@@ -450,11 +478,15 @@ def timer_loop(socketio, game_code, id_partida, initial_timer, token):
     business = PartidaBusiness()
     normalized_code = str(game_code).strip().upper()
     remaining = int((initial_timer or {}).get("remaining") or 0)
+    first_tick = True
 
     while remaining > 0:
         socketio.sleep(1)
 
-        if active_timer_tokens.get(normalized_code) != token:
+        with action_state_lock:
+            timer_is_current = active_timer_tokens.get(normalized_code) == token
+
+        if not timer_is_current:
             return
 
         remaining -= 1
@@ -463,12 +495,28 @@ def timer_loop(socketio, game_code, id_partida, initial_timer, token):
             "remaining": remaining,
             "exhausted": remaining <= 0
         }
-        emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
+        if first_tick:
+            with performance_operation("SocketIO timer_tick", kind="timer"):
+                emit_live_event(
+                    socketio,
+                    "actualizar_cronometro",
+                    timer,
+                    game_code
+                )
+            first_tick = False
+        else:
+            emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
 
-    if active_timer_tokens.get(normalized_code) == token:
-        active_timer_tokens[normalized_code] = None
-        business.mark_time_expired(id_partida)
-        emit_state(socketio, game_code)
+    with action_state_lock:
+        timer_is_current = active_timer_tokens.get(normalized_code) == token
+
+        if timer_is_current:
+            active_timer_tokens.pop(normalized_code, None)
+
+    if timer_is_current:
+        with performance_operation("SocketIO timer_expiry", kind="timer"):
+            business.mark_time_expired(id_partida)
+            emit_state(socketio, game_code)
 
 
 
@@ -1000,7 +1048,6 @@ def register_socket_events(socketio):
                     },
                     game_code
                 )
-                emit_state(socketio, game_code)
 
     @socketio.on("dar_palabra")
     @socket_event_performance("dar_palabra")

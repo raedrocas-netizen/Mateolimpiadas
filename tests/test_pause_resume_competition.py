@@ -144,7 +144,7 @@ class FakeLiveBusiness:
     def get_word_requests(self, id_partida):
         return self.requests
 
-    def get_live_ranking(self, game_code):
+    def get_live_ranking(self, game_code, partida=None):
         return {"ranking": [], "total_questions": 3, "current_question": 1}
 
     def get_timer_status(self, id_partida):
@@ -702,6 +702,7 @@ class PauseResumeSocketTests(unittest.TestCase):
 
         business.mark_time_expired.assert_called_once_with(1)
         emit_state.assert_called_once_with(self.socketio, "ABC123")
+        self.assertNotIn("ABC123", competition_events.active_timer_tokens)
         self.assertEqual(
             [item["id_solicitud"] for item in rebuilt_state["solicitudes"]],
             [1, 2, 3]
@@ -711,6 +712,67 @@ class PauseResumeSocketTests(unittest.TestCase):
             and payload["remaining"] == 0
             for event, payload, room in self.socketio.emissions
         ))
+
+    def test_stale_timer_cannot_remove_a_new_timer_token(self):
+        competition_events.active_timer_tokens["ABC123"] = "new-token"
+        business = Mock()
+
+        with patch.object(competition_events, "PartidaBusiness", return_value=business):
+            competition_events.timer_loop(
+                self.socketio,
+                "ABC123",
+                1,
+                {"remaining": 1, "exhausted": False},
+                "old-token"
+            )
+
+        self.assertEqual(
+            competition_events.active_timer_tokens["ABC123"],
+            "new-token"
+        )
+        business.mark_time_expired.assert_not_called()
+
+    def test_stop_timer_removes_token_and_is_idempotent(self):
+        competition_events.active_timer_tokens["ABC123"] = "timer-token"
+
+        competition_events.stop_timer("abc123")
+        competition_events.stop_timer("ABC123")
+
+        self.assertNotIn("ABC123", competition_events.active_timer_tokens)
+
+    def test_word_request_uses_targeted_events_without_full_state_rebuild(self):
+        request_payload = request_data(
+            4,
+            sg.WORD_REQUEST_STATUS_QUEUED,
+            1
+        )
+        result = successful_result({
+            "request": request_payload,
+            "queue": [request_payload]
+        })
+        business = Mock()
+        business.request_word.return_value = result
+
+        with self.app.test_request_context("/"), patch.object(
+                competition_events,
+                "PartidaBusiness",
+                return_value=business
+        ), patch.object(competition_events, "emit") as direct_emit, patch.object(
+                competition_events,
+                "emit_state"
+        ) as emit_state:
+            self.socketio.handlers["pedir_palabra"]({
+                "codigo_partida": "ABC123",
+                "codigo_participante": "EQ4"
+            })
+
+        emit_state.assert_not_called()
+        direct_emit.assert_called_once()
+        self.assertTrue(direct_emit.call_args.args[1]["success"])
+        emitted_events = [event for event, payload, room in self.socketio.emissions]
+        self.assertIn("solicitud_palabra", emitted_events)
+        self.assertIn("solicitud_palabra_publica", emitted_events)
+        self.assertNotIn("estado_sala", emitted_events)
 
     def test_pause_and_resume_do_not_emit_countdown_or_change_question(self):
         partida = game()

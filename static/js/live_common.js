@@ -30,6 +30,9 @@ const liveSoundPaths = {
 const liveAudioCache = {};
 const liveTimerSoundState = {};
 const liveActiveTickKeys = new Set();
+const liveSoundsAvailable = Boolean(document.querySelector(
+    "#judgeCompetitionPanel, .participant-view, .display-screen"
+));
 const stopTickBeforeSound = new Set([
     "start",
     "question",
@@ -80,9 +83,11 @@ function stopTickSound() {
     audio.loop = false;
 }
 
-["pointerdown", "keydown", "touchstart"].forEach(eventName => {
-    window.addEventListener(eventName, enableLiveSounds, {once: true, passive: true});
-});
+if (liveSoundsAvailable) {
+    ["pointerdown", "keydown", "touchstart"].forEach(eventName => {
+        window.addEventListener(eventName, enableLiveSounds, {once: true, passive: true});
+    });
+}
 
 function playSound(name, options = {}) {
     if (!liveSoundsEnabled || !liveSoundPaths[name]) {

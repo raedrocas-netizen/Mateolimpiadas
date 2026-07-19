@@ -1,5 +1,6 @@
 import contextvars
 import functools
+import json
 import os
 import time
 from contextlib import contextmanager
@@ -10,7 +11,7 @@ _serialization_depth = contextvars.ContextVar("serialization_depth", default=0)
 
 
 def performance_enabled():
-    return os.getenv("PERFORMANCE_LOGS", "1").lower() not in {"0", "false", "no"}
+    return os.getenv("PERFORMANCE_LOGS", "0").lower() not in {"0", "false", "no"}
 
 
 class PerformanceContext:
@@ -32,6 +33,7 @@ class PerformanceContext:
             "Serializacion": 0,
         }
         self.slow_sql = []
+        self.socket_payloads = {}
         self.finished = False
 
     def add(self, category, elapsed):
@@ -47,6 +49,26 @@ class PerformanceContext:
         if elapsed >= 0.05:
             clean_statement = " ".join(str(statement).split())
             self.slow_sql.append((elapsed, clean_statement[:180]))
+
+    def add_socket_payload(self, event, payload):
+        try:
+            encoded = json.dumps(
+                payload,
+                ensure_ascii=False,
+                default=str,
+                separators=(",", ":")
+            ).encode("utf-8")
+        except (TypeError, ValueError):
+            return
+
+        item = self.socket_payloads.setdefault(
+            str(event),
+            {"bytes": 0, "count": 0, "max_bytes": 0}
+        )
+        size = len(encoded)
+        item["bytes"] += size
+        item["count"] += 1
+        item["max_bytes"] = max(item["max_bytes"], size)
 
     def finish(self, status=None):
         if self.finished:
@@ -88,6 +110,18 @@ class PerformanceContext:
             f"({self.counts.get('Serializacion', 0)})",
             flush=True
         )
+        payload_bytes = sum(
+            item["bytes"]
+            for item in self.socket_payloads.values()
+        )
+        payload_count = sum(
+            item["count"]
+            for item in self.socket_payloads.values()
+        )
+        print(
+            f"Payload Socket.IO: {payload_bytes} bytes ({payload_count})",
+            flush=True
+        )
         print(f"Negocio/otros: {max(remaining, 0.0):.3f} s", flush=True)
 
         if slow_sql:
@@ -95,12 +129,29 @@ class PerformanceContext:
             for elapsed, statement in slow_sql:
                 print(f"- {elapsed:.3f} s | {statement}", flush=True)
 
+        if self.socket_payloads:
+            print("Payloads principales:", flush=True)
+            largest_payloads = sorted(
+                self.socket_payloads.items(),
+                key=lambda item: item[1]["bytes"],
+                reverse=True
+            )[:3]
+            for event, item in largest_payloads:
+                print(
+                    f"- {event}: {item['bytes']} bytes "
+                    f"({item['count']}), max {item['max_bytes']} bytes",
+                    flush=True
+                )
+
 
 def current_context():
     return _current_context.get()
 
 
 def begin_operation(label, kind="general"):
+    if not performance_enabled():
+        return None, None
+
     context = PerformanceContext(label, kind=kind)
     token = _current_context.set(context)
     return context, token
@@ -136,6 +187,13 @@ def record_sql(statement, elapsed):
 
     if context is not None:
         context.add_sql(statement, elapsed)
+
+
+def record_socket_payload(event, payload):
+    context = current_context()
+
+    if context is not None:
+        context.add_socket_payload(event, payload)
 
 
 @contextmanager

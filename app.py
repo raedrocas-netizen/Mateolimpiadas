@@ -1,8 +1,9 @@
-from flask import Flask
+from flask import Flask, g, request
 
 from config import Config
 from extensions import socketio
 from helper.database_implements import create_tables
+from helpers.performance import begin_operation, finish_operation
 from routes.api import api_bp
 from routes.judge import judge_bp
 from routes.main import main_bp
@@ -18,6 +19,27 @@ def create_app():
     app.register_blueprint(judge_bp)
     app.register_blueprint(participant_bp)
     app.register_blueprint(api_bp)
+
+    @app.before_request
+    def start_page_performance():
+        if request.blueprint == "api" or request.endpoint == "static":
+            return
+
+        context, token = begin_operation(
+            f"{request.method} {request.path}",
+            kind="http"
+        )
+        g.page_performance_context = context
+        g.page_performance_token = token
+
+    @app.after_request
+    def finish_page_performance(response):
+        finish_operation(
+            getattr(g, "page_performance_context", None),
+            getattr(g, "page_performance_token", None),
+            status=response.status_code
+        )
+        return response
 
     socketio.init_app(app)
     register_socket_events(socketio)
