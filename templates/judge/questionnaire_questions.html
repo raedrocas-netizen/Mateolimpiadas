@@ -155,6 +155,10 @@
 </main>
 {% endblock %}
 
+{% block vendor_scripts %}
+<script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+{% endblock %}
+
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/content_filters.js') }}"></script>

@@ -130,9 +130,10 @@ class FakeLiveStateBusiness:
 
     def __init__(self, state="EN_CURSO"):
         self.state = state
+        self.partida = FakePartida(self.state)
 
     def get_by_code(self, game_code):
-        return FakePartida(self.state)
+        return self.partida
 
     def get_waiting_room_status(self, id_partida):
         return []
@@ -143,7 +144,7 @@ class FakeLiveStateBusiness:
     def get_word_requests(self, id_partida):
         return []
 
-    def get_live_ranking(self, game_code):
+    def get_live_ranking(self, game_code, partida=None):
         return {"ranking": [], "total_questions": 1}
 
     def get_timer_status(self, id_partida):

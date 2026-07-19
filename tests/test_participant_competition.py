@@ -243,6 +243,7 @@ class FakeLiveBusiness:
     def __init__(self, game_state, request_status):
         self.partida = game(game_state)
         self.request_status = request_status
+        self.ranking_partida = None
 
     def get_by_code(self, game_code):
         return self.partida
@@ -279,7 +280,8 @@ class FakeLiveBusiness:
             "sede": "Petapa",
         }]
 
-    def get_live_ranking(self, game_code):
+    def get_live_ranking(self, game_code, partida=None):
+        self.ranking_partida = partida
         return {
             "ranking": [{
                 "participant_code": "PET-001",
@@ -314,6 +316,21 @@ class ParticipantReconnectStateTests(unittest.TestCase):
 
             self.assertEqual(state["solicitudes"][0]["estado"], request_status)
             self.assertEqual(state["ranking"]["ranking"][0]["puntaje"], 55)
+
+    def test_state_reuses_loaded_game_for_ranking(self):
+        business = FakeLiveBusiness(
+            sg.GAME_STATUS_IN_PROGRESS,
+            sg.WORD_REQUEST_STATUS_QUEUED
+        )
+
+        with patch.object(
+                competition_events,
+                "PartidaBusiness",
+                return_value=business,
+        ):
+            competition_events.build_live_state("ABC123")
+
+        self.assertIs(business.ranking_partida, business.partida)
 
     def test_paused_and_finished_states_reconstruct_without_private_answer(self):
         paused = self.build_state(sg.GAME_STATUS_PAUSED, sg.WORD_REQUEST_STATUS_TURN)

@@ -780,6 +780,13 @@ def estado_partida(id_partida):
         "participantes": serialize_any(business.get_waiting_room_status(id_partida)),
         "pregunta": pregunta,
         "solicitudes": solicitudes,
-        "ranking": serialize_any(business.get_live_ranking(partida.get_codigo_partida()) if partida else None),
+        "ranking": serialize_any(
+            business.get_live_ranking(
+                partida.get_codigo_partida(),
+                partida=partida
+            )
+            if partida
+            else None
+        ),
         "timer": serialize_any(business.get_timer_status(id_partida))
     })

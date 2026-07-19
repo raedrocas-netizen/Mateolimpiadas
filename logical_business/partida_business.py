@@ -816,7 +816,8 @@ class PartidaBusiness:
 
     def get_live_ranking(
             self,
-            game_code
+            game_code,
+            partida=None
     ):
 
         game_code = str(
@@ -826,9 +827,14 @@ class PartidaBusiness:
         if game_code == "":
             return None
 
-        partida = self.get_by_code(
-            game_code
-        )
+        if (
+                partida is None
+                or str(partida.get_codigo_partida()).strip().upper()
+                != game_code.upper()
+        ):
+            partida = self.get_by_code(
+                game_code
+            )
 
         if partida is None:
             return None

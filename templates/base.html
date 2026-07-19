@@ -12,8 +12,7 @@
         {% block body %}{% endblock %}
     </div>
     {% include "includes/footer.html" %}
-    <script src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
-    <script src="{{ url_for('static', filename='vendor/socket.io/socket.io.min.js') }}"></script>
+    {% block vendor_scripts %}{% endblock %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

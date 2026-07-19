@@ -54,13 +54,57 @@ class FrontendVendorAssetsTest(unittest.TestCase):
                     f"Referencia externa de runtime en {path.relative_to(PROJECT_ROOT)}",
                 )
 
-    def test_base_template_renders_local_vendor_urls(self):
+    def test_base_template_only_loads_shared_css_vendor(self):
         with self.app.test_request_context("/"):
             rendered = render_template("base.html")
 
-        for relative_path in VENDOR_ASSETS:
-            self.assertIn(f'/static/{relative_path}', rendered)
+        self.assertIn(
+            '/static/vendor/bootstrap/css/bootstrap.min.css',
+            rendered
+        )
+        self.assertNotIn(
+            '/static/vendor/bootstrap/js/bootstrap.bundle.min.js',
+            rendered
+        )
+        self.assertNotIn(
+            '/static/vendor/socket.io/socket.io.min.js',
+            rendered
+        )
         self.assertNotRegex(rendered, r'(?:href|src)=["\'](?:https?:)?//')
+
+    def test_pages_load_only_the_vendor_scripts_they_use(self):
+        bootstrap_pages = {
+            "judge/dashboard.html",
+            "judge/questionnaire_questions.html",
+            "participant/room.html",
+        }
+        socket_pages = {
+            "judge/dashboard.html",
+            "participant/join.html",
+            "participant/room.html",
+            "display.html",
+        }
+
+        for relative_path in bootstrap_pages:
+            source = (TEMPLATES_DIR / relative_path).read_text(encoding="utf-8")
+            self.assertIn(
+                "vendor/bootstrap/js/bootstrap.bundle.min.js",
+                source,
+                relative_path,
+            )
+
+        for relative_path in socket_pages:
+            source = (TEMPLATES_DIR / relative_path).read_text(encoding="utf-8")
+            self.assertIn(
+                "vendor/socket.io/socket.io.min.js",
+                source,
+                relative_path,
+            )
+
+        for relative_path in ("index.html", "judge/login.html", "judge/name.html"):
+            source = (TEMPLATES_DIR / relative_path).read_text(encoding="utf-8")
+            self.assertNotIn("bootstrap.bundle.min.js", source, relative_path)
+            self.assertNotIn("socket.io.min.js", source, relative_path)
 
     def test_vendor_assets_match_pinned_versions_and_hashes(self):
         for relative_path, (expected_hash, version_marker) in VENDOR_ASSETS.items():
