@@ -100,6 +100,9 @@ class ScriptedCursor:
     def fetchone(self):
         return self.current_result
 
+    def fetchall(self):
+        return self.current_result or []
+
     def close(self):
         return None
 
@@ -120,8 +123,9 @@ class ScriptedDao:
 
 class FakeLiveBusiness:
 
-    def __init__(self, state=sg.GAME_STATUS_PAUSED, active_turn=True):
-        self.partida = game(state, remaining=18)
+    def __init__(self, state=sg.GAME_STATUS_PAUSED, active_turn=True, remaining=18):
+        self.partida = game(state, remaining=remaining)
+        self.remaining = remaining
         self.requests = [
             request_data(1, sg.WORD_REQUEST_STATUS_TURN if active_turn else sg.WORD_REQUEST_STATUS_QUEUED, 1),
             request_data(2, sg.WORD_REQUEST_STATUS_QUEUED, 2),
@@ -145,9 +149,12 @@ class FakeLiveBusiness:
 
     def get_timer_status(self, id_partida):
         return {
-            "remaining": 18,
-            "exhausted": False,
-            "active_since": None if self.partida.get_estado() == sg.GAME_STATUS_PAUSED else "18/07/2026 12:00:00",
+            "remaining": self.remaining,
+            "exhausted": self.remaining <= 0,
+            "active_since": None if (
+                self.partida.get_estado() == sg.GAME_STATUS_PAUSED
+                or self.remaining <= 0
+            ) else "18/07/2026 12:00:00",
             "game_state": self.partida.get_estado()
         }
 
@@ -313,6 +320,191 @@ class PauseResumeBusinessTests(unittest.TestCase):
 
 class PauseResumeDaoTests(unittest.TestCase):
 
+    @staticmethod
+    def _transaction_request(request_id, status=sg.WORD_REQUEST_STATUS_TURN):
+        return {
+            "id_solicitud": request_id,
+            "id_partida": 1,
+            "id_partida_pregunta": 10,
+            "id_participante": request_id,
+            "estado": status,
+            "game_state": sg.GAME_STATUS_IN_PROGRESS,
+            "question_state": sg.GAME_QUESTION_STATUS_CURRENT
+        }
+
+    @staticmethod
+    def _request_payload(request_id, status, order=None):
+        return request_data(request_id, status, order or request_id)
+
+    def test_time_expired_only_materializes_zero_and_preserves_queue(self):
+        scripted = ScriptedDao([{"estado": sg.GAME_STATUS_IN_PROGRESS}])
+        dao = PartidaDao()
+        dao.dao = scripted
+
+        result = dao.mark_time_expired_transaction(1)
+
+        self.assertTrue(result)
+        self.assertEqual(scripted.conexion.commits, 1)
+        self.assertTrue(any(
+            "UPDATE partidas" in sql
+            and parameters == (1,)
+            for sql, parameters in scripted.cursor.calls
+        ))
+        self.assertFalse(any(
+            "UPDATE partida_preguntas" in sql
+            or "UPDATE solicitudes_palabra" in sql
+            for sql, parameters in scripted.cursor.calls
+        ))
+
+    def test_new_word_request_is_rejected_when_timer_is_zero(self):
+        scripted = ScriptedDao([{
+            "game_state": sg.GAME_STATUS_IN_PROGRESS,
+            "pregunta_actual": 1,
+            "tiempo_por_pregunta": 30,
+            "tiempo_restante_actual": 0,
+            "temporizador_activo_desde": None,
+            "tiempo_agotado": 1,
+            "id_partida_pregunta": 10,
+            "question_state": sg.GAME_QUESTION_STATUS_CURRENT,
+            "id_participante": 4,
+            "conectado": 1
+        }])
+        dao = PartidaDao()
+        dao.dao = scripted
+
+        result = dao.request_word_transaction(1, "EQ4")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["reason"], "time_exhausted")
+        self.assertEqual(scripted.conexion.rollbacks, 1)
+        self.assertFalse(any(
+            "INSERT INTO solicitudes_palabra" in sql
+            for sql, parameters in scripted.cursor.calls
+        ))
+
+    def test_judge_can_give_word_with_timer_zero(self):
+        scripted = ScriptedDao([
+            self._transaction_request(1, sg.WORD_REQUEST_STATUS_QUEUED),
+            (0,),
+            {
+                "tiempo_por_pregunta": 30,
+                "tiempo_restante_actual": 0,
+                "temporizador_activo_desde": None
+            },
+            self._request_payload(1, sg.WORD_REQUEST_STATUS_TURN),
+            {
+                "tiempo_por_pregunta": 30,
+                "tiempo_restante_actual": 0,
+                "temporizador_activo_desde": None,
+                "tiempo_agotado": 1,
+                "estado": sg.GAME_STATUS_IN_PROGRESS
+            }
+        ])
+        dao = PartidaDao()
+        dao.dao = scripted
+
+        result = dao.give_word_transaction(1)
+
+        self.assertEqual(result["request"]["estado"], sg.WORD_REQUEST_STATUS_TURN)
+        self.assertEqual(result["timer"]["remaining"], 0)
+        self.assertTrue(result["timer"]["exhausted"])
+        self.assertTrue(any(
+            "UPDATE solicitudes_palabra" in sql
+            and parameters == (sg.WORD_REQUEST_STATUS_TURN, 1)
+            for sql, parameters in scripted.cursor.calls
+        ))
+
+    def test_incorrect_answers_advance_a_b_c_and_keep_timer_zero(self):
+        for current_id, next_id in ((1, 2), (2, 3)):
+            scripted = ScriptedDao([
+                self._transaction_request(current_id),
+                (0,),
+                {"id_solicitud": next_id},
+                self._request_payload(next_id, sg.WORD_REQUEST_STATUS_TURN),
+                self._request_payload(current_id, sg.WORD_REQUEST_STATUS_INCORRECT),
+                [
+                    self._request_payload(current_id, sg.WORD_REQUEST_STATUS_INCORRECT),
+                    self._request_payload(next_id, sg.WORD_REQUEST_STATUS_TURN)
+                ],
+                []
+            ])
+            dao = PartidaDao()
+            dao.dao = scripted
+
+            result = dao.mark_word_request_result_transaction(
+                current_id,
+                sg.GAME_ANSWER_RESULT_INCORRECT,
+                0
+            )
+
+            self.assertEqual(result["request"]["estado"], sg.WORD_REQUEST_STATUS_INCORRECT)
+            self.assertEqual(result["next_request"]["id_solicitud"], next_id)
+            self.assertEqual(result["next_request"]["estado"], sg.WORD_REQUEST_STATUS_TURN)
+            self.assertIsNone(result["timer"])
+
+        scripted = ScriptedDao([
+            self._transaction_request(3),
+            (0,),
+            None,
+            {
+                "tiempo_por_pregunta": 30,
+                "tiempo_restante_actual": 0,
+                "estado": sg.GAME_STATUS_IN_PROGRESS
+            },
+            self._request_payload(3, sg.WORD_REQUEST_STATUS_INCORRECT),
+            [self._request_payload(3, sg.WORD_REQUEST_STATUS_INCORRECT)],
+            []
+        ])
+        dao = PartidaDao()
+        dao.dao = scripted
+
+        result = dao.mark_word_request_result_transaction(
+            3,
+            sg.GAME_ANSWER_RESULT_INCORRECT,
+            0
+        )
+
+        self.assertIsNone(result["next_request"])
+        self.assertEqual(result["timer"]["remaining"], 0)
+        self.assertTrue(result["timer"]["exhausted"])
+        self.assertFalse(any(
+            "temporizador_activo_desde = ?" in sql
+            for sql, parameters in scripted.cursor.calls
+        ))
+
+    def test_correct_at_zero_keeps_existing_queue_closure_rule(self):
+        scripted = ScriptedDao([
+            self._transaction_request(1),
+            (0,),
+            self._request_payload(1, sg.WORD_REQUEST_STATUS_CORRECT),
+            [
+                self._request_payload(1, sg.WORD_REQUEST_STATUS_CORRECT),
+                self._request_payload(2, sg.WORD_REQUEST_STATUS_CANCELLED),
+                self._request_payload(3, sg.WORD_REQUEST_STATUS_CANCELLED)
+            ],
+            []
+        ])
+        dao = PartidaDao()
+        dao.dao = scripted
+
+        result = dao.mark_word_request_result_transaction(
+            1,
+            sg.GAME_ANSWER_RESULT_CORRECT,
+            10
+        )
+
+        self.assertEqual(result["request"]["estado"], sg.WORD_REQUEST_STATUS_CORRECT)
+        self.assertIsNone(result["next_request"])
+        self.assertTrue(any(
+            "UPDATE solicitudes_palabra" in sql
+            and parameters == (
+                sg.WORD_REQUEST_STATUS_CANCELLED,
+                10,
+                sg.WORD_REQUEST_STATUS_QUEUED
+            )
+            for sql, parameters in scripted.cursor.calls
+        ))
+
     def test_pause_materializes_running_remaining_without_touching_queue(self):
         scripted = ScriptedDao([{
             "estado": sg.GAME_STATUS_IN_PROGRESS,
@@ -392,6 +584,40 @@ class PauseResumeDaoTests(unittest.TestCase):
 
 class PauseResumePayloadTests(unittest.TestCase):
 
+    def test_timer_zero_state_reconstructs_pending_queue(self):
+        business = FakeLiveBusiness(
+            state=sg.GAME_STATUS_IN_PROGRESS,
+            active_turn=False,
+            remaining=0
+        )
+
+        with patch.object(competition_events, "PartidaBusiness", return_value=business):
+            judge_state = competition_events.build_live_state("ABC123", include_answer=True)
+
+        self.assertEqual(judge_state["timer"]["remaining"], 0)
+        self.assertTrue(judge_state["timer"]["exhausted"])
+        self.assertEqual(
+            [item["id_solicitud"] for item in judge_state["solicitudes"]],
+            [1, 2, 3]
+        )
+        self.assertTrue(all(
+            item["estado"] == sg.WORD_REQUEST_STATUS_QUEUED
+            for item in judge_state["solicitudes"]
+        ))
+
+    def test_new_question_does_not_inherit_previous_queue(self):
+        requests = [
+            request_data(1, sg.WORD_REQUEST_STATUS_QUEUED, 1),
+            {**request_data(2, sg.WORD_REQUEST_STATUS_QUEUED, 1), "id_partida_pregunta": 11}
+        ]
+
+        current = competition_events.filter_current_question_requests(
+            requests,
+            {"id_partida_pregunta": 11}
+        )
+
+        self.assertEqual([item["id_solicitud"] for item in current], [2])
+
     def test_paused_public_state_hides_question_but_judge_keeps_everything(self):
         business = FakeLiveBusiness()
 
@@ -449,6 +675,42 @@ class PauseResumeSocketTests(unittest.TestCase):
         with self.app.test_request_context("/"):
             session["judge_authenticated"] = True
             self.socketio.handlers[event](payload)
+
+    def test_natural_timer_expiry_materializes_zero_and_rebuilds_queue(self):
+        token = "timer-token"
+        competition_events.active_timer_tokens["ABC123"] = token
+        business = Mock()
+        rebuilt_state = {
+            "timer": {"remaining": 0, "exhausted": True},
+            "solicitudes": [
+                request_data(1, sg.WORD_REQUEST_STATUS_QUEUED, 1),
+                request_data(2, sg.WORD_REQUEST_STATUS_QUEUED, 2),
+                request_data(3, sg.WORD_REQUEST_STATUS_QUEUED, 3)
+            ]
+        }
+
+        with patch.object(competition_events, "PartidaBusiness", return_value=business), patch.object(
+                competition_events, "emit_state", return_value=rebuilt_state
+        ) as emit_state:
+            competition_events.timer_loop(
+                self.socketio,
+                "ABC123",
+                1,
+                {"remaining": 1, "exhausted": False},
+                token
+            )
+
+        business.mark_time_expired.assert_called_once_with(1)
+        emit_state.assert_called_once_with(self.socketio, "ABC123")
+        self.assertEqual(
+            [item["id_solicitud"] for item in rebuilt_state["solicitudes"]],
+            [1, 2, 3]
+        )
+        self.assertTrue(any(
+            event == "actualizar_cronometro"
+            and payload["remaining"] == 0
+            for event, payload, room in self.socketio.emissions
+        ))
 
     def test_pause_and_resume_do_not_emit_countdown_or_change_question(self):
         partida = game()

@@ -1000,6 +1000,7 @@ def register_socket_events(socketio):
                     },
                     game_code
                 )
+                emit_state(socketio, game_code)
 
     @socketio.on("dar_palabra")
     @socket_event_performance("dar_palabra")

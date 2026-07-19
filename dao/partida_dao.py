@@ -1860,21 +1860,11 @@ class PartidaDao:
                 """
                 SELECT estado
                 FROM partidas
-                WHERE id_partida = ?;
+                WHERE id_partida = ?
+                FOR UPDATE;
                 """,
                 (id_partida,)
             ).fetchone()
-
-            if (
-                    game is None
-                    or game["estado"] not in sg.RECOVERABLE_GAME_STATUS
-            ):
-                self.dao.conexion.rollback()
-                self.dao.cerrar()
-                return {
-                    "success": False,
-                    "reason": "game_unavailable"
-                }
 
             participant = self.dao.cursor.execute(
                 """
@@ -1898,17 +1888,28 @@ class PartidaDao:
                 )
             ).fetchone()
 
+            game_available = (
+                game is not None
+                and (
+                    game["estado"] in sg.RECOVERABLE_GAME_STATUS
+                    or (
+                        game["estado"] == sg.GAME_STATUS_FINISHED
+                        and participant is not None
+                    )
+                )
+            )
+
+            if not game_available:
+                self.dao.conexion.rollback()
+                self.dao.cerrar()
+                return {
+                    "success": False,
+                    "reason": "game_unavailable"
+                }
+
             reconnected = participant is not None
 
             if participant is not None:
-                if participant["conectado"] == 1:
-                    self.dao.conexion.rollback()
-                    self.dao.cerrar()
-                    return {
-                        "success": False,
-                        "reason": "already_connected"
-                    }
-
                 self.dao.cursor.execute(
                     """
                     UPDATE participantes
@@ -2701,7 +2702,6 @@ class PartidaDao:
             partida = self.dao.cursor.execute(
                 """
                 SELECT
-                    p.pregunta_actual,
                     p.estado
                 FROM partidas p
                 WHERE p.id_partida = ?
@@ -2717,63 +2717,6 @@ class PartidaDao:
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
                 return False
-
-            current_question = self.dao.cursor.execute(
-                """
-                SELECT
-                    id_partida_pregunta,
-                    estado
-                FROM partida_preguntas
-                WHERE id_partida = ?
-                AND numero_orden = ?;
-                """,
-                (
-                    id_partida,
-                    partida["pregunta_actual"]
-                )
-            ).fetchone()
-
-            if current_question is not None:
-                correct_count = self.dao.cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM respuestas_partida
-                    WHERE id_partida_pregunta = ?
-                    AND resultado = ?;
-                    """,
-                    (
-                        current_question["id_partida_pregunta"],
-                        sg.GAME_ANSWER_RESULT_CORRECT
-                    )
-                ).fetchone()[0]
-
-                if correct_count == 0:
-                    self.dao.cursor.execute(
-                        """
-                        UPDATE partida_preguntas
-                        SET estado = ?
-                        WHERE id_partida_pregunta = ?;
-                        """,
-                        (
-                            sg.GAME_QUESTION_STATUS_NO_ANSWER,
-                            current_question["id_partida_pregunta"]
-                        )
-                    )
-
-                self.dao.cursor.execute(
-                    """
-                    UPDATE solicitudes_palabra
-                    SET estado = ?
-                    WHERE id_partida_pregunta = ?
-                    AND estado IN (?, ?);
-                    """,
-                    (
-                        sg.WORD_REQUEST_STATUS_CANCELLED,
-                        current_question["id_partida_pregunta"],
-                        sg.WORD_REQUEST_STATUS_QUEUED,
-                        sg.WORD_REQUEST_STATUS_TURN
-                    )
-                )
 
             self.dao.cursor.execute(
                 """

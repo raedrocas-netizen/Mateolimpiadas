@@ -136,6 +136,18 @@
             </section>
 
             <section class="tab-pane fade" id="liveTab">
+                <div id="activeRoomHeader" class="tool-card waiting-room-heading mb-3 d-none">
+                    <div>
+                        <span class="eyebrow">Administración de sala</span>
+                        <h2 id="activeRoomName">Competencia</h2>
+                    </div>
+                    <div class="waiting-room-code">
+                        <span>Código de sala</span>
+                        <strong id="activeRoomCode"></strong>
+                        <button id="copyWaitingCode" class="btn btn-sm btn-outline-primary" type="button">Copiar código</button>
+                    </div>
+                </div>
+
                 <div id="liveConnectPanel" class="tool-card live-connect-panel">
                     <h2>Abrir una sala existente</h2>
                     <p class="text-secondary">Usa esta opción para recuperar una partida creada anteriormente.</p>
@@ -152,11 +164,6 @@
                         <div>
                             <span class="eyebrow">Sala de espera</span>
                             <h2 id="waitingGameName">Partida</h2>
-                        </div>
-                        <div class="waiting-room-code">
-                            <span>Código de sala</span>
-                            <strong id="waitingGameCode">------</strong>
-                            <button id="copyWaitingCode" class="btn btn-sm btn-outline-primary" type="button">Copiar código</button>
                         </div>
                     </div>
                     <div class="waiting-room-summary"><strong id="waitingConnectedCount">0</strong> equipos conectados</div>

@@ -225,8 +225,18 @@
         return labels[status] || "Abrir";
     }
 
+    function activeRoomCode(game) {
+        return String(game?.codigo_partida || "").trim().toUpperCase();
+    }
+
+    function activeRoomName(game) {
+        return String(game?.nombre || "").trim() || "Competencia";
+    }
+
     return {
         ACTIVE_STATUS,
+        activeRoomCode,
+        activeRoomName,
         activeQuestionnaires,
         activeWordRequests,
         competitionControlState,

@@ -854,7 +854,6 @@ function renderWaitingRoom() {
     const connectedCount = participants.filter(item => Number(item.conectado) === 1).length;
     const waiting = currentGameState() === GAME_STATUS_WAITING;
     $("#waitingGameName").textContent = liveState?.partida?.nombre || "Partida";
-    $("#waitingGameCode").textContent = liveCode || liveState?.partida?.codigo_partida || "------";
     $("#waitingConnectedCount").textContent = String(connectedCount);
     $("#waitingParticipants").innerHTML = participants.map(item => {
         const id = Number(item.id_participante);
@@ -888,6 +887,15 @@ function renderWaitingRoom() {
     updateLiveActionButtons();
 }
 
+function renderActiveRoomHeader() {
+    const activeGame = liveState?.partida;
+    const roomCode = JudgeGameHelpers.activeRoomCode(activeGame);
+
+    $("#activeRoomName").textContent = JudgeGameHelpers.activeRoomName(activeGame);
+    $("#activeRoomCode").textContent = roomCode;
+    $("#activeRoomHeader").classList.toggle("d-none", !roomCode);
+}
+
 function syncActiveGameSummary() {
     const game = liveState?.partida;
 
@@ -919,6 +927,7 @@ function renderJudgeLayout() {
     ].includes(state) || liveTransitionActive;
     const hasRoom = Boolean(liveState?.partida);
 
+    renderActiveRoomHeader();
     $("#liveConnectPanel").classList.toggle("d-none", hasRoom);
     $("#judgeWaitingRoom").classList.toggle("d-none", !waiting || liveTransitionActive);
     $("#judgeCompetitionPanel").classList.toggle("d-none", !competition);
@@ -1009,7 +1018,9 @@ $("#nextQuestion").addEventListener("click", () => {
 
 $("#finishGame").addEventListener("click", () => requestFinishGame(false));
 
-$("#copyWaitingCode").addEventListener("click", () => copyGameCode(liveCode));
+$("#copyWaitingCode").addEventListener("click", () => (
+    copyGameCode(JudgeGameHelpers.activeRoomCode(liveState?.partida))
+));
 
 function deleteWaitingParticipant(id) {
     const participantId = Number(id);

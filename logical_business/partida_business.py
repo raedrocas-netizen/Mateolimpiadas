@@ -1048,6 +1048,7 @@ class PartidaBusiness:
         game_code = str(game_code or "").strip()
         sede = str(sede or "").strip()
         nombre = str(nombre or "").strip()
+        integrantes = str(integrantes or "").strip()
 
         if game_code == "":
             return self._set_error(
@@ -1063,16 +1064,6 @@ class PartidaBusiness:
                 "La partida no existe."
             )
 
-        if partida.get_estado() not in sg.RECOVERABLE_GAME_STATUS:
-            if partida.get_estado() == sg.GAME_STATUS_FINISHED:
-                return self._set_error(
-                    "La sala ya finalizo. Ingresa a otra sala o consulta con el juez."
-                )
-
-            return self._set_error(
-                "La sala no esta disponible para participantes."
-            )
-
         if sede not in sg.IMB_PC_TEAMS:
             return self._set_error(
                 "La sede seleccionada no es vÃ¡lida."
@@ -1083,21 +1074,30 @@ class PartidaBusiness:
             sede
         )
 
+        can_reconnect_finished = (
+            partida.get_estado() == sg.GAME_STATUS_FINISHED
+            and existing_participant is not None
+        )
+
         if (
-                existing_participant is None
-                and nombre == ""
+                partida.get_estado() not in sg.RECOVERABLE_GAME_STATUS
+                and not can_reconnect_finished
         ):
+            if partida.get_estado() == sg.GAME_STATUS_FINISHED:
+                return self._set_error(
+                    "La sala ya finalizo. Ingresa a otra sala o consulta con el juez."
+                )
+
             return self._set_error(
-                "Debe ingresar el nombre del equipo o participante."
+                "La sala no esta disponible para participantes."
             )
 
         if (
-                existing_participant is not None
-                and existing_participant["conectado"] == 1
+                existing_participant is None
+                and (nombre == "" or integrantes == "")
         ):
             return self._set_error(
-                "Esta sede ya estÃ¡ conectada en la partida. "
-                "Consulta con el juez antes de volver a ingresar."
+                "Para el primer ingreso debe completar el nombre del equipo y sus integrantes."
             )
 
         normalized_site = unicodedata.normalize(
@@ -1132,12 +1132,6 @@ class PartidaBusiness:
         if not dao_result.get("success"):
             reason = dao_result.get("reason")
 
-            if reason == "already_connected":
-                return self._set_error(
-                    "Esta sede ya estÃ¡ conectada en la partida. "
-                    "Consulta con el juez antes de volver a ingresar."
-                )
-
             if reason == "game_unavailable":
                 return self._set_error(
                     "La partida ya no estÃ¡ disponible."
@@ -1157,7 +1151,7 @@ class PartidaBusiness:
 
         if participant["reconnected"]:
             result.set_message(
-                "ReconexiÃ³n exitosa."
+                "Equipo reconectado correctamente."
             )
         else:
             result.set_message(
