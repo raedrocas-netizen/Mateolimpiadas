@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
     activeQuestionnaires,
     activeWordRequests,
+    competitionControlState,
     filterActiveQuestionnaires,
     gameActionLabel,
     nextQuestionAction,
@@ -228,6 +229,72 @@ test("decide el flujo exacto de siguiente pregunta", () => {
         totalQuestions: 3,
         transitionActive: true
     }), "blocked");
+});
+
+test("solo permite pausar una pregunta activa fuera de la precuenta", () => {
+    const active = competitionControlState({
+        gameState: "EN_CURSO",
+        hasQuestion: true,
+        questionState: "ACTUAL",
+        remaining: 16
+    });
+    const countdown = competitionControlState({
+        gameState: "EN_CURSO",
+        hasQuestion: true,
+        questionState: "ACTUAL",
+        remaining: 16,
+        transitionActive: true
+    });
+    const exhausted = competitionControlState({
+        gameState: "EN_CURSO",
+        hasQuestion: true,
+        questionState: "ACTUAL",
+        remaining: 0
+    });
+
+    assert.equal(active.pauseResumeAction, "pause");
+    assert.equal(active.showPauseResume, true);
+    assert.equal(countdown.pauseResumeAction, "blocked");
+    assert.equal(countdown.showPauseResume, false);
+    assert.equal(exhausted.pauseResumeAction, "blocked");
+    assert.equal(exhausted.showPauseResume, false);
+});
+
+test("durante PAUSADA solo conserva Reanudar y Finalizar como controles activos", () => {
+    const paused = competitionControlState({
+        gameState: "PAUSADA",
+        hasQuestion: true,
+        questionState: "ACTUAL",
+        remaining: 18
+    });
+
+    assert.equal(paused.pauseResumeAction, "resume");
+    assert.equal(paused.showPauseResume, true);
+    assert.equal(paused.canFinish, true);
+    assert.equal(paused.canNext, false);
+    assert.equal(paused.canModifyQuestion, false);
+});
+
+test("el bloqueo pendiente evita doble Pausar o doble Reanudar", () => {
+    const pausing = competitionControlState({
+        gameState: "EN_CURSO",
+        hasQuestion: true,
+        questionState: "ACTUAL",
+        remaining: 18,
+        pendingAction: "pause"
+    });
+    const resuming = competitionControlState({
+        gameState: "PAUSADA",
+        hasQuestion: true,
+        questionState: "ACTUAL",
+        remaining: 18,
+        pendingAction: "resume"
+    });
+
+    assert.equal(pausing.pauseResumeAction, "blocked");
+    assert.equal(resuming.pauseResumeAction, "blocked");
+    assert.equal(pausing.canModifyQuestion, false);
+    assert.equal(resuming.canFinish, false);
 });
 
 test("presenta la acción principal según el estado", () => {

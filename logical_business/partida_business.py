@@ -611,6 +611,50 @@ class PartidaBusiness:
 
         result = BusinessResult()
 
+        partida = self.get_by_id(
+            id_partida
+        )
+
+        if partida is None:
+            result.set_message(
+                "No fue posible cargar la partida."
+            )
+            return result
+
+        if partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS:
+            result.set_message(
+                "Solo puede pausar una partida en curso."
+            )
+            return result
+
+        current_question = self.get_current_question(
+            id_partida
+        )
+
+        if (
+                current_question is None
+                or current_question.get("estado")
+                != sg.GAME_QUESTION_STATUS_CURRENT
+        ):
+            result.set_message(
+                "No hay una pregunta activa que pueda pausarse."
+            )
+            return result
+
+        timer = self.get_timer_status(
+            id_partida
+        )
+
+        if (
+                timer is None
+                or timer.get("exhausted")
+                or int(timer.get("remaining") or 0) <= 0
+        ):
+            result.set_message(
+                "No puede pausar una pregunta cuyo tiempo ya finalizó."
+            )
+            return result
+
         if self.__partida_dao.pause_game_transaction(
                 id_partida
         ):
@@ -618,9 +662,10 @@ class PartidaBusiness:
             result.set_message(
                 "Partida pausada correctamente."
             )
-            result.set_data(
-                self.get_by_id(id_partida)
-            )
+            result.set_data({
+                "partida": self.get_by_id(id_partida),
+                "timer": self.get_timer_status(id_partida)
+            })
             return result
 
         result.set_message(
@@ -635,6 +680,50 @@ class PartidaBusiness:
 
         result = BusinessResult()
 
+        partida = self.get_by_id(
+            id_partida
+        )
+
+        if partida is None:
+            result.set_message(
+                "No fue posible cargar la partida."
+            )
+            return result
+
+        if partida.get_estado() != sg.GAME_STATUS_PAUSED:
+            result.set_message(
+                "Solo puede reanudar una partida pausada."
+            )
+            return result
+
+        current_question = self.get_current_question(
+            id_partida
+        )
+
+        if (
+                current_question is None
+                or current_question.get("estado")
+                != sg.GAME_QUESTION_STATUS_CURRENT
+        ):
+            result.set_message(
+                "No hay una pregunta activa que pueda reanudarse."
+            )
+            return result
+
+        timer = self.get_timer_status(
+            id_partida
+        )
+
+        if (
+                timer is None
+                or timer.get("exhausted")
+                or int(timer.get("remaining") or 0) <= 0
+        ):
+            result.set_message(
+                "No puede reanudar una pregunta cuyo tiempo ya finalizó."
+            )
+            return result
+
         if self.__partida_dao.resume_game_transaction(
                 id_partida
         ):
@@ -642,9 +731,10 @@ class PartidaBusiness:
             result.set_message(
                 "Partida reanudada correctamente."
             )
-            result.set_data(
-                self.get_by_id(id_partida)
-            )
+            result.set_data({
+                "partida": self.get_by_id(id_partida),
+                "timer": self.get_timer_status(id_partida)
+            })
             return result
 
         result.set_message(
@@ -1186,6 +1276,12 @@ class PartidaBusiness:
             )
             return result
 
+        if partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS:
+            result.set_message(
+                "La partida no está en curso."
+            )
+            return result
+
         dao_result = (
             self.__partida_dao.request_word_transaction(
                 partida.get_id_partida(),
@@ -1317,6 +1413,29 @@ class PartidaBusiness:
 
         result = BusinessResult()
 
+        request = self.get_word_request_by_id(
+            id_solicitud
+        )
+
+        if request is None:
+            result.set_message(
+                "Debe seleccionar una solicitud de palabra."
+            )
+            return result
+
+        partida = self.get_by_id(
+            request["id_partida"]
+        )
+
+        if (
+                partida is None
+                or partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS
+        ):
+            result.set_message(
+                "Solo puede dar la palabra con la partida en curso."
+            )
+            return result
+
         dao_result = self.__partida_dao.give_word_transaction(
                 id_solicitud
         )
@@ -1356,6 +1475,11 @@ class PartidaBusiness:
         if partida is None:
             return self._set_error(
                 "No fue posible cargar la partida."
+            )
+
+        if partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS:
+            return self._set_error(
+                "No puede calificar respuestas mientras la partida está pausada."
             )
 
         result = self._mark_word_request_result(
@@ -1402,6 +1526,11 @@ class PartidaBusiness:
         if partida is None:
             return self._set_error(
                 "No fue posible cargar la partida."
+            )
+
+        if partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS:
+            return self._set_error(
+                "No puede calificar respuestas mientras la partida está pausada."
             )
 
         return self._mark_word_request_result(
@@ -1478,6 +1607,19 @@ class PartidaBusiness:
         if request["estado"] != sg.WORD_REQUEST_STATUS_TURN:
             result.set_message(
                 "Solo se puede pasar una solicitud en turno."
+            )
+            return result
+
+        partida = self.get_by_id(
+            request["id_partida"]
+        )
+
+        if (
+                partida is None
+                or partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS
+        ):
+            result.set_message(
+                "No puede cambiar el turno mientras la partida está pausada."
             )
             return result
 

@@ -1100,17 +1100,30 @@ class PartidaDao:
             partida = self.dao.cursor.execute(
                 """
                 SELECT
-                    estado,
-                    tiempo_por_pregunta,
-                    tiempo_restante_actual,
-                    temporizador_activo_desde
-                FROM partidas
-                WHERE id_partida = ?;
+                    p.estado,
+                    p.tiempo_por_pregunta,
+                    p.tiempo_restante_actual,
+                    p.temporizador_activo_desde,
+                    p.tiempo_agotado,
+                    pp.id_partida_pregunta,
+                    pp.estado AS question_state
+                FROM partidas p
+                LEFT JOIN partida_preguntas pp
+                    ON pp.id_partida = p.id_partida
+                    AND pp.numero_orden = p.pregunta_actual
+                WHERE p.id_partida = ?
+                FOR UPDATE OF p;
                 """,
                 (id_partida,)
             ).fetchone()
 
-            if partida is None:
+            if (
+                    partida is None
+                    or partida["estado"] != sg.GAME_STATUS_IN_PROGRESS
+                    or partida["id_partida_pregunta"] is None
+                    or partida["question_state"]
+                    != sg.GAME_QUESTION_STATUS_CURRENT
+            ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
                 return False
@@ -1124,6 +1137,11 @@ class PartidaDao:
                 remaining_source,
                 partida["temporizador_activo_desde"]
             )
+
+            if partida["tiempo_agotado"] == 1 or remaining <= 0:
+                self.dao.conexion.rollback()
+                self.dao.cerrar()
+                return False
 
             self.dao.cursor.execute(
                 """
@@ -1172,15 +1190,29 @@ class PartidaDao:
             partida = self.dao.cursor.execute(
                 """
                 SELECT
-                    tiempo_por_pregunta,
-                    tiempo_restante_actual
-                FROM partidas
-                WHERE id_partida = ?;
+                    p.estado,
+                    p.tiempo_por_pregunta,
+                    p.tiempo_restante_actual,
+                    p.tiempo_agotado,
+                    pp.id_partida_pregunta,
+                    pp.estado AS question_state
+                FROM partidas p
+                LEFT JOIN partida_preguntas pp
+                    ON pp.id_partida = p.id_partida
+                    AND pp.numero_orden = p.pregunta_actual
+                WHERE p.id_partida = ?
+                FOR UPDATE OF p;
                 """,
                 (id_partida,)
             ).fetchone()
 
-            if partida is None:
+            if (
+                    partida is None
+                    or partida["estado"] != sg.GAME_STATUS_PAUSED
+                    or partida["id_partida_pregunta"] is None
+                    or partida["question_state"]
+                    != sg.GAME_QUESTION_STATUS_CURRENT
+            ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
                 return False
@@ -1190,17 +1222,43 @@ class PartidaDao:
             if remaining is None:
                 remaining = partida["tiempo_por_pregunta"]
 
+            if partida["tiempo_agotado"] == 1 or remaining <= 0:
+                self.dao.conexion.rollback()
+                self.dao.cerrar()
+                return False
+
+            active_turn = self.dao.cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM solicitudes_palabra
+                WHERE id_partida = ?
+                AND id_partida_pregunta = ?
+                AND estado = ?;
+                """,
+                (
+                    id_partida,
+                    partida["id_partida_pregunta"],
+                    sg.WORD_REQUEST_STATUS_TURN
+                )
+            ).fetchone()[0]
+            active_since = None
+
+            if active_turn == 0:
+                active_since = self._now_text()
+
             self.dao.cursor.execute(
                 """
                 UPDATE partidas
                 SET
                     estado = ?,
+                    tiempo_restante_actual = ?,
                     temporizador_activo_desde = ?
                 WHERE id_partida = ?;
                 """,
                 (
                     sg.GAME_STATUS_IN_PROGRESS,
-                    self._now_text(),
+                    remaining,
+                    active_since,
                     id_partida
                 )
             )
@@ -2519,12 +2577,19 @@ class PartidaDao:
             request = self.dao.cursor.execute(
                 """
                 SELECT
-                    id_solicitud,
-                    id_partida,
-                    id_partida_pregunta,
-                    estado
-                FROM solicitudes_palabra
-                WHERE id_solicitud = ?;
+                    sp.id_solicitud,
+                    sp.id_partida,
+                    sp.id_partida_pregunta,
+                    sp.estado,
+                    p.estado AS game_state,
+                    pp.estado AS question_state
+                FROM solicitudes_palabra sp
+                INNER JOIN partidas p
+                    ON sp.id_partida = p.id_partida
+                INNER JOIN partida_preguntas pp
+                    ON sp.id_partida_pregunta = pp.id_partida_pregunta
+                WHERE sp.id_solicitud = ?
+                FOR UPDATE OF p, sp;
                 """,
                 (id_solicitud,)
             ).fetchone()
@@ -2533,6 +2598,10 @@ class PartidaDao:
                     request is None
                     or request["estado"]
                     != sg.WORD_REQUEST_STATUS_QUEUED
+                    or request["game_state"]
+                    != sg.GAME_STATUS_IN_PROGRESS
+                    or request["question_state"]
+                    != sg.GAME_QUESTION_STATUS_CURRENT
             ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
@@ -2632,14 +2701,19 @@ class PartidaDao:
             partida = self.dao.cursor.execute(
                 """
                 SELECT
-                    pregunta_actual
-                FROM partidas
-                WHERE id_partida = ?;
+                    p.pregunta_actual,
+                    p.estado
+                FROM partidas p
+                WHERE p.id_partida = ?
+                FOR UPDATE OF p;
                 """,
                 (id_partida,)
             ).fetchone()
 
-            if partida is None:
+            if (
+                    partida is None
+                    or partida["estado"] != sg.GAME_STATUS_IN_PROGRESS
+            ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
                 return False
@@ -2741,13 +2815,20 @@ class PartidaDao:
             request = self.dao.cursor.execute(
                 """
                 SELECT
-                    id_solicitud,
-                    id_partida,
-                    id_partida_pregunta,
-                    id_participante,
-                    estado
-                FROM solicitudes_palabra
-                WHERE id_solicitud = ?;
+                    sp.id_solicitud,
+                    sp.id_partida,
+                    sp.id_partida_pregunta,
+                    sp.id_participante,
+                    sp.estado,
+                    p.estado AS game_state,
+                    pp.estado AS question_state
+                FROM solicitudes_palabra sp
+                INNER JOIN partidas p
+                    ON sp.id_partida = p.id_partida
+                INNER JOIN partida_preguntas pp
+                    ON sp.id_partida_pregunta = pp.id_partida_pregunta
+                WHERE sp.id_solicitud = ?
+                FOR UPDATE OF p, sp;
                 """,
                 (id_solicitud,)
             ).fetchone()
@@ -2756,6 +2837,10 @@ class PartidaDao:
                     request is None
                     or request["estado"]
                     != sg.WORD_REQUEST_STATUS_TURN
+                    or request["game_state"]
+                    != sg.GAME_STATUS_IN_PROGRESS
+                    or request["question_state"]
+                    != sg.GAME_QUESTION_STATUS_CURRENT
             ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
@@ -2984,13 +3069,20 @@ class PartidaDao:
             request = self.dao.cursor.execute(
                 """
                 SELECT
-                    id_solicitud,
-                    id_partida,
-                    id_partida_pregunta,
-                    orden_solicitud,
-                    estado
-                FROM solicitudes_palabra
-                WHERE id_solicitud = ?;
+                    sp.id_solicitud,
+                    sp.id_partida,
+                    sp.id_partida_pregunta,
+                    sp.orden_solicitud,
+                    sp.estado,
+                    p.estado AS game_state,
+                    pp.estado AS question_state
+                FROM solicitudes_palabra sp
+                INNER JOIN partidas p
+                    ON sp.id_partida = p.id_partida
+                INNER JOIN partida_preguntas pp
+                    ON sp.id_partida_pregunta = pp.id_partida_pregunta
+                WHERE sp.id_solicitud = ?
+                FOR UPDATE OF p, sp;
                 """,
                 (id_solicitud,)
             ).fetchone()
@@ -2999,6 +3091,10 @@ class PartidaDao:
                     request is None
                     or request["estado"]
                     != sg.WORD_REQUEST_STATUS_TURN
+                    or request["game_state"]
+                    != sg.GAME_STATUS_IN_PROGRESS
+                    or request["question_state"]
+                    != sg.GAME_QUESTION_STATUS_CURRENT
             ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
@@ -3079,12 +3175,16 @@ class PartidaDao:
                     tiempo_por_pregunta,
                     estado
                 FROM partidas
-                WHERE id_partida = ?;
+                WHERE id_partida = ?
+                FOR UPDATE;
                 """,
                 (id_partida,)
             ).fetchone()
 
-            if row is None:
+            if (
+                    row is None
+                    or row["estado"] != sg.GAME_STATUS_IN_PROGRESS
+            ):
                 self.dao.conexion.rollback()
                 self.dao.cerrar()
                 return False

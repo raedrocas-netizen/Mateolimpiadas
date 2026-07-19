@@ -221,6 +221,12 @@ def get_competition_status(partida, participantes, solicitudes, pregunta=None):
             "mensaje": "La sala esta abierta para que los equipos se unan."
         }
 
+    if estado == sg.GAME_STATUS_PAUSED:
+        return {
+            "estado": "PARTIDA PAUSADA",
+            "mensaje": "Espera a que el juez reanude la partida."
+        }
+
     if estado == "EN_CURSO":
         current_question_id = (
             pregunta.get("id_partida_pregunta")
@@ -315,6 +321,24 @@ def filter_current_question_requests(solicitudes, pregunta):
     ]
 
 
+def public_live_state(state):
+    if state is None:
+        return None
+
+    public_question = game_question_to_dict(
+        state.get("pregunta"),
+        include_answer=False
+    )
+
+    if state.get("partida", {}).get("estado") == sg.GAME_STATUS_PAUSED:
+        public_question = None
+
+    return {
+        **state,
+        "pregunta": public_question
+    }
+
+
 def build_live_state(game_code, include_answer=False):
     business = PartidaBusiness()
     partida = business.get_by_code(str(game_code or "").strip().upper())
@@ -340,7 +364,7 @@ def build_live_state(game_code, include_answer=False):
         pregunta
     )
 
-    return {
+    state = {
         "partida": partida_data,
         "participantes": participantes,
         "pregunta": pregunta,
@@ -351,18 +375,17 @@ def build_live_state(game_code, include_answer=False):
         "mensaje_estado": status["mensaje"]
     }
 
+    if include_answer:
+        return state
+
+    return public_live_state(state)
+
 
 def emit_state(socketio, game_code):
     judge_state = build_live_state(game_code, include_answer=True)
 
     if judge_state is not None:
-        participant_state = {
-            **judge_state,
-            "pregunta": game_question_to_dict(
-                judge_state.get("pregunta"),
-                include_answer=False
-            )
-        }
+        participant_state = public_live_state(judge_state)
         with measure("SocketIO"):
             socketio.emit(
                 "estado_sala",
@@ -773,6 +796,98 @@ def register_socket_events(socketio):
                     "No fue posible iniciar la competencia. Inténtalo de nuevo."
                 ))
             )
+
+    @socketio.on("pausar_competencia")
+    @socket_event_performance("pausar_competencia")
+    def pausar_competencia(data):
+        if reject_non_judge():
+            return
+
+        business = PartidaBusiness()
+        partida = business.get_by_code(data.get("codigo_partida"))
+
+        if partida is None:
+            emit("error_sala", {"message": "La partida no existe."})
+            return
+
+        game_code = partida.get_codigo_partida()
+
+        if not begin_game_action(game_code, "pause"):
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "Hay otra acción en curso. Espera antes de pausar la partida."
+                ))
+            )
+            return
+
+        try:
+            result = business.pause_game(partida.get_id_partida())
+
+            if result.get_success():
+                stop_timer(game_code)
+                emit_state(socketio, game_code)
+
+            emit("resultado_accion", business_result_to_dict(result))
+        except Exception as error:
+            print(f"Error al pausar competencia: {error}")
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "No fue posible pausar la competencia. Inténtalo de nuevo."
+                ))
+            )
+        finally:
+            finish_game_action(game_code)
+
+    @socketio.on("reanudar_competencia")
+    @socket_event_performance("reanudar_competencia")
+    def reanudar_competencia(data):
+        if reject_non_judge():
+            return
+
+        business = PartidaBusiness()
+        partida = business.get_by_code(data.get("codigo_partida"))
+
+        if partida is None:
+            emit("error_sala", {"message": "La partida no existe."})
+            return
+
+        game_code = partida.get_codigo_partida()
+
+        if not begin_game_action(game_code, "resume"):
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "Hay otra acción en curso. Espera antes de reanudar la partida."
+                ))
+            )
+            return
+
+        try:
+            result = business.resume_game(partida.get_id_partida())
+
+            if result.get_success():
+                state = emit_state(socketio, game_code)
+                timer = (state or {}).get("timer")
+                start_timer_from_payload(
+                    socketio,
+                    game_code,
+                    partida.get_id_partida(),
+                    timer
+                )
+
+            emit("resultado_accion", business_result_to_dict(result))
+        except Exception as error:
+            print(f"Error al reanudar competencia: {error}")
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "No fue posible reanudar la competencia. Inténtalo de nuevo."
+                ))
+            )
+        finally:
+            finish_game_action(game_code)
 
     @socketio.on("eliminar_participante_espera")
     @socket_event_performance("eliminar_participante_espera")

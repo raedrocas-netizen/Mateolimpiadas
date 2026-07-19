@@ -14,6 +14,7 @@
 }(typeof globalThis !== "undefined" ? globalThis : this, function createJudgeGameHelpers(filters) {
     const ACTIVE_STATUS = "ACTIVO";
     const IN_PROGRESS_STATUS = "EN_CURSO";
+    const PAUSED_STATUS = "PAUSADA";
     const ACTIVE_WORD_REQUEST_STATUSES = new Set(["EN_COLA", "EN_TURNO"]);
     const DEFAULT_SITE_IDENTITY = Object.freeze({
         key: "default",
@@ -172,6 +173,47 @@
         return "advance";
     }
 
+    function competitionControlState({
+        gameState,
+        hasQuestion = false,
+        questionState = "",
+        remaining = 0,
+        transitionActive = false,
+        pendingAction = ""
+    } = {}) {
+        const inProgress = gameState === IN_PROGRESS_STATUS;
+        const paused = gameState === PAUSED_STATUS;
+        const busy = transitionActive || Boolean(pendingAction);
+        const activeQuestion = (
+            hasQuestion
+            && questionState === "ACTUAL"
+            && Number(remaining) > 0
+        );
+        let pauseResumeAction = "blocked";
+
+        if (!busy && paused) {
+            pauseResumeAction = "resume";
+        } else if (!busy && inProgress && activeQuestion) {
+            pauseResumeAction = "pause";
+        }
+
+        return {
+            busy,
+            inProgress,
+            paused,
+            activeQuestion,
+            pauseResumeAction,
+            showPauseResume: paused || (
+                inProgress
+                && activeQuestion
+                && !transitionActive
+            ),
+            canNext: inProgress && !busy,
+            canFinish: (inProgress || paused) && !busy,
+            canModifyQuestion: inProgress && !busy
+        };
+    }
+
     function gameActionLabel(status) {
         const labels = {
             ESPERANDO: "Abrir sala",
@@ -187,6 +229,7 @@
         ACTIVE_STATUS,
         activeQuestionnaires,
         activeWordRequests,
+        competitionControlState,
         filterActiveQuestionnaires,
         gameActionLabel,
         nextQuestionAction,

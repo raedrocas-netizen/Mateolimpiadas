@@ -765,9 +765,26 @@ function currentGameState() {
     return liveState?.partida?.estado || "";
 }
 
+function currentCompetitionControls() {
+    return JudgeGameHelpers.competitionControlState({
+        gameState: currentGameState(),
+        hasQuestion: Boolean(liveState?.pregunta),
+        questionState: (
+            liveState?.pregunta?.estado_partida_pregunta
+            || liveState?.pregunta?.estado
+            || ""
+        ),
+        remaining: liveTimerRemaining,
+        transitionActive: liveTransitionActive,
+        pendingAction: pendingLiveAction
+    });
+}
+
 function updateLiveActionButtons() {
     const state = currentGameState();
+    const controls = currentCompetitionControls();
     const startButton = $("#startGame");
+    const pauseResumeButton = $("#pauseResumeGame");
     const nextButton = $("#nextQuestion");
     const finishButton = $("#finishGame");
 
@@ -779,11 +796,19 @@ function updateLiveActionButtons() {
     );
     startButton.textContent = pendingLiveAction === "start" ? "Iniciando..." : "Iniciar competencia";
 
-    nextButton.disabled = (
-        state !== GAME_STATUS_IN_PROGRESS
-        || Boolean(pendingLiveAction)
-        || liveTransitionActive
-    );
+    pauseResumeButton.classList.toggle("d-none", !controls.showPauseResume);
+    pauseResumeButton.disabled = controls.pauseResumeAction === "blocked";
+    pauseResumeButton.classList.toggle("btn-warning", !controls.paused);
+    pauseResumeButton.classList.toggle("btn-success", controls.paused);
+    pauseResumeButton.textContent = pendingLiveAction === "pause"
+        ? "Pausando..."
+        : pendingLiveAction === "resume"
+            ? "Reanudando..."
+            : controls.paused
+                ? "Reanudar"
+                : "Pausar";
+
+    nextButton.disabled = !controls.canNext;
     nextButton.textContent = pendingLiveAction === "finish-time"
         ? "Finalizando tiempo..."
         : pendingLiveAction === "next"
@@ -794,11 +819,7 @@ function updateLiveActionButtons() {
         "d-none",
         ![GAME_STATUS_IN_PROGRESS, GAME_STATUS_PAUSED].includes(state)
     );
-    finishButton.disabled = (
-        ![GAME_STATUS_IN_PROGRESS, GAME_STATUS_PAUSED].includes(state)
-        || Boolean(pendingLiveAction)
-        || liveTransitionActive
-    );
+    finishButton.disabled = !controls.canFinish;
     finishButton.textContent = pendingLiveAction === "finish" ? "Finalizando..." : "Finalizar";
 }
 
@@ -931,6 +952,23 @@ $("#startGame").addEventListener("click", () => {
     judgeSocket.emit("iniciar_competencia", {codigo_partida: liveCode});
 });
 
+$("#pauseResumeGame").addEventListener("click", () => {
+    const action = currentCompetitionControls().pauseResumeAction;
+
+    if (action === "blocked" || !setPendingLiveAction(action)) {
+        return;
+    }
+
+    if (action === "resume") {
+        setLiveMessage("Reanudando competencia...", true);
+        judgeSocket.emit("reanudar_competencia", {codigo_partida: liveCode});
+        return;
+    }
+
+    setLiveMessage("Pausando competencia...", true);
+    judgeSocket.emit("pausar_competencia", {codigo_partida: liveCode});
+});
+
 $("#nextQuestion").addEventListener("click", () => {
     const action = JudgeGameHelpers.nextQuestionAction({
         gameState: currentGameState(),
@@ -1023,6 +1061,7 @@ $("#expandAnswerImage").addEventListener("click", () => {
 
 function renderRequests(requests, state = {}) {
     const orderedRequests = JudgeGameHelpers.activeWordRequests(requests);
+    const competitionControls = currentCompetitionControls();
     const activeTurn = orderedRequests.some(item => item.estado === "EN_TURNO");
     const firstQueued = orderedRequests.find(item => item.estado === "EN_COLA");
     const closedQuestion = [
@@ -1030,8 +1069,15 @@ function renderRequests(requests, state = {}) {
         "Competencia finalizada",
         "Cuenta regresiva"
     ].includes(state.estado_competencia);
-    const canGiveWord = !activeTurn && !closedQuestion;
-    const canGrade = state.estado_competencia === "Esperando respuesta" || activeTurn;
+    const canGiveWord = (
+        competitionControls.canModifyQuestion
+        && !activeTurn
+        && !closedQuestion
+    );
+    const canGrade = (
+        competitionControls.canModifyQuestion
+        && (state.estado_competencia === "Esperando respuesta" || activeTurn)
+    );
 
     const container = $("#wordRequests");
 
@@ -1051,11 +1097,11 @@ function renderRequests(requests, state = {}) {
     orderedRequests.forEach(item => {
         const firstInQueue = firstQueued?.id_solicitud === item.id_solicitud;
         const status = requestStatusLabel(item, firstInQueue);
-        const controls = item.estado === "EN_COLA" && firstInQueue && canGiveWord
-            ? `<button class="btn btn-sm btn-primary" onclick="giveWord(${item.id_solicitud})">Dar palabra</button>`
-            : item.estado === "EN_TURNO" && canGrade
-                ? `<button class="btn btn-sm btn-success" onclick="markCorrect(${item.id_solicitud})">Correcta</button>
-                   <button class="btn btn-sm btn-danger" onclick="markIncorrect(${item.id_solicitud})">Incorrecta</button>`
+        const controls = item.estado === "EN_COLA" && firstInQueue
+            ? `<button class="btn btn-sm btn-primary" onclick="giveWord(${item.id_solicitud})"${canGiveWord ? "" : " disabled aria-disabled=\"true\""}>Dar palabra</button>`
+            : item.estado === "EN_TURNO"
+                ? `<button class="btn btn-sm btn-success" onclick="markCorrect(${item.id_solicitud})"${canGrade ? "" : " disabled aria-disabled=\"true\""}>Correcta</button>
+                   <button class="btn btn-sm btn-danger" onclick="markIncorrect(${item.id_solicitud})"${canGrade ? "" : " disabled aria-disabled=\"true\""}>Incorrecta</button>`
                 : status.badge;
         const requestId = String(item.id_solicitud);
         let itemRow = container.querySelector(`[data-request-id="${requestId}"]`);
@@ -1212,14 +1258,26 @@ function renderJudgeQuestion(question, fallback = "Esperando que el juez inicie 
 }
 
 function giveWord(id) {
+    if (!currentCompetitionControls().canModifyQuestion) {
+        return;
+    }
+
     judgeSocket.emit("dar_palabra", {codigo_partida: liveCode, id_solicitud: id});
 }
 
 function markCorrect(id) {
+    if (!currentCompetitionControls().canModifyQuestion) {
+        return;
+    }
+
     judgeSocket.emit("respuesta_correcta", {codigo_partida: liveCode, id_solicitud: id});
 }
 
 function markIncorrect(id) {
+    if (!currentCompetitionControls().canModifyQuestion) {
+        return;
+    }
+
     judgeSocket.emit("respuesta_incorrecta", {codigo_partida: liveCode, id_solicitud: id});
 }
 
@@ -1249,6 +1307,14 @@ judgeSocket.on("estado_sala", state => {
     );
 
     liveState = state;
+
+    if (
+        (pendingLiveAction === "pause" && state.partida?.estado === GAME_STATUS_PAUSED)
+        || (pendingLiveAction === "resume" && state.partida?.estado === GAME_STATUS_IN_PROGRESS)
+    ) {
+        pendingLiveAction = "";
+    }
+
     liveQuestionId = stateQuestionId;
     liveTotalQuestions = state.ranking?.total_questions || liveTotalQuestions;
     liveTimerRemaining = normalizedTimerValue(state.timer);
@@ -1326,7 +1392,7 @@ judgeSocket.on("resultado_accion", payload => {
         renderTimer($("#judgeTimer"), liveState.timer, $("#judgeTimerProgress"));
     }
 
-    if (pendingLiveAction !== "finish") {
+    if (!["finish", "pause", "resume"].includes(pendingLiveAction)) {
         clearPendingLiveAction();
     }
 });
