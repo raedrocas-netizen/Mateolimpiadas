@@ -517,6 +517,21 @@ class PartidaBusiness:
             )
             return result
 
+        timer_status = self.get_timer_status(
+            id_partida
+        )
+
+        if (
+                partida.get_pregunta_actual() > 0
+                and timer_status is not None
+                and timer_status.get("remaining", 0) > 0
+        ):
+            result.set_message(
+                "Debe finalizar el tiempo de la pregunta actual antes "
+                "de avanzar."
+            )
+            return result
+
         total_questions = self.get_total_questions(
             id_partida
         )
@@ -565,10 +580,7 @@ class PartidaBusiness:
                 "No fue posible cargar la partida."
             )
 
-        if partida.get_estado() not in (
-                sg.GAME_STATUS_WAITING,
-                sg.GAME_STATUS_IN_PROGRESS
-        ):
+        if partida.get_estado() != sg.GAME_STATUS_WAITING:
             return self._set_error(
                 "Solo puede iniciar una partida en sala de espera."
             )
@@ -793,6 +805,27 @@ class PartidaBusiness:
     ):
 
         result = BusinessResult()
+        partida = self.get_by_id(
+            id_partida
+        )
+
+        if partida is None:
+            result.set_message(
+                "No fue posible cargar la partida."
+            )
+            return result
+
+        if partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS:
+            result.set_message(
+                "Solo puede finalizar el tiempo con la partida en curso."
+            )
+            return result
+
+        if partida.get_pregunta_actual() <= 0:
+            result.set_message(
+                "No hay una pregunta actual para finalizar."
+            )
+            return result
 
         if self.__partida_dao.mark_time_expired_transaction(
                 id_partida
@@ -1325,12 +1358,28 @@ class PartidaBusiness:
                 "No fue posible cargar la partida."
             )
 
-        return self._mark_word_request_result(
+        result = self._mark_word_request_result(
             id_solicitud,
             sg.GAME_ANSWER_RESULT_CORRECT,
             partida.get_puntos_correcta(),
             request
         )
+
+        if not result.get_success():
+            return result
+
+        timer_result = self.mark_time_expired(
+            request["id_partida"]
+        )
+
+        if timer_result.get_success():
+            data = result.get_data() or {}
+            data["timer"] = self.get_timer_status(
+                request["id_partida"]
+            )
+            result.set_data(data)
+
+        return result
 
     def mark_incorrect(
             self,

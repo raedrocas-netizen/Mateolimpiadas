@@ -9,6 +9,8 @@
 }(typeof globalThis !== "undefined" ? globalThis : this, function createContentFilters() {
     function normalizeSearch(value) {
         return String(value ?? "")
+            .normalize("NFD")
+            .replace(/\p{M}+/gu, "")
             .trim()
             .replace(/\s+/g, " ")
             .toLocaleLowerCase("es");

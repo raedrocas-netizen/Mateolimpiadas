@@ -31,6 +31,10 @@ from helpers.ownership import (
     current_owner,
 )
 from helpers.image_cleanup import cleanup_replaced_image
+from helpers.image_validation import (
+    image_content_matches_extension,
+    image_extension_allowed,
+)
 from helpers.performance import begin_operation, finish_operation, measure_serialization
 from logical_business.cuestionario_business import CuestionarioBusiness
 from logical_business.materia_business import MateriaBusiness
@@ -671,10 +675,16 @@ def subir_imagen():
     safe_name = secure_filename(image.filename)
     extension = os.path.splitext(safe_name)[1].lower()
 
-    if extension not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+    if not image_extension_allowed(extension):
         return json_data({
             "success": False,
             "message": "Formato de imagen no permitido."
+        }, 400)
+
+    if not image_content_matches_extension(image.stream, extension):
+        return json_data({
+            "success": False,
+            "message": "El archivo no contiene una imagen valida para su formato."
         }, 400)
 
     owner_slug = secure_filename(current_owner()) or "global"

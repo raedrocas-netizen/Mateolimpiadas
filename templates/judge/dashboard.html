@@ -14,10 +14,10 @@
 
     <section class="container-fluid py-4">
         <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
-            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#contentTab" type="button">Contenido</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gamesTab" type="button">Partidas</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#liveTab" type="button">Competencia</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#historyTab" type="button">Historial</button></li>
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#contentTab" data-dashboard-tab="contenido" type="button">Contenido</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gamesTab" data-dashboard-tab="partidas" type="button">Partidas</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#liveTab" data-dashboard-tab="competencia" type="button">Competencia</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#historyTab" data-dashboard-tab="historial" type="button">Historial</button></li>
         </ul>
 
         <div class="tab-content pt-4">
@@ -39,7 +39,10 @@
                         <div class="tool-card">
                             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                                 <h2 class="mb-0">Cuestionarios</h2>
-                                <button id="refreshQuestionnaires" class="btn btn-sm btn-outline-primary" type="button">Actualizar</button>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button class="btn btn-sm btn-primary" type="button" data-go-to-tab="partidas">Ir a crear partida</button>
+                                    <button id="refreshQuestionnaires" class="btn btn-sm btn-outline-primary" type="button">Actualizar</button>
+                                </div>
                             </div>
                             <form id="cuestionarioForm" class="row g-2">
                                 <input type="hidden" name="id_cuestionario">
@@ -72,31 +75,53 @@
                 <div class="row g-4">
                     <div class="col-lg-5">
                         <div class="tool-card">
-                            <h2>Crear partida</h2>
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                                <h2 class="mb-0">Crear partida</h2>
+                                <button class="btn btn-sm btn-outline-primary" type="button" data-go-to-tab="contenido">Administrar cuestionarios</button>
+                            </div>
                             <form id="partidaForm" class="stack-form">
+                                <label class="form-label mb-0" for="gameCode">Código de sala</label>
                                 <div class="input-group">
-                                    <input class="form-control code-input" name="codigo_partida" placeholder="Codigo">
-                                    <button class="btn btn-outline-primary" id="generateCode" type="button">Generar</button>
+                                    <input id="gameCode" class="form-control code-input" name="codigo_partida" placeholder="Código" autocomplete="off" required>
+                                    <button class="btn btn-outline-primary" id="generateCode" type="button">Generar nuevo</button>
                                 </div>
-                                <input class="form-control" name="nombre" placeholder="Nombre de partida" required>
-                                <select class="form-select" name="area" required></select>
-                                <select class="form-select" name="id_cuestionarios" multiple required></select>
-                                <div class="row g-2">
-                                    <div class="col-md-4">
-                                        <label class="form-label">Tiempo por pregunta (segundos)</label>
-                                        <input class="form-control" type="number" name="tiempo_por_pregunta" value="30" min="5">
+                                <div>
+                                    <label class="form-label" for="gameName">Nombre de partida</label>
+                                    <input id="gameName" class="form-control" name="nombre" placeholder="Ej. Ronda Primaria" required>
+                                </div>
+                                <div>
+                                    <label class="form-label" for="gameArea">Área de la partida</label>
+                                    <select id="gameArea" class="form-select" name="area" aria-describedby="gameAreaHelp" required></select>
+                                    <div id="gameAreaHelp" class="form-text" role="status" aria-live="polite">Selecciona cuestionarios para inferir el área o elígela manualmente.</div>
+                                </div>
+                                <fieldset class="questionnaire-picker">
+                                    <legend class="form-label">Cuestionarios activos</legend>
+                                    <div class="input-group">
+                                        <input id="gameQuestionnaireSearch" class="form-control" type="search" placeholder="Buscar por nombre, materia o área" autocomplete="off">
+                                        <button id="clearGameQuestionnaireSearch" class="btn btn-outline-secondary" type="button">Limpiar filtro</button>
                                     </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label">Puntaje por respuesta correcta</label>
-                                        <input class="form-control" type="number" name="puntos_correcta" value="10" min="0">
+                                    <div id="gameQuestionnaireList" class="questionnaire-checklist" aria-describedby="gameQuestionnaireSummary" tabindex="-1"></div>
+                                    <div class="questionnaire-picker-footer">
+                                        <span id="gameQuestionnaireSummary" class="small text-secondary" role="status" aria-live="polite">0 cuestionarios seleccionados</span>
+                                        <button id="clearGameQuestionnaireSelection" class="btn btn-sm btn-outline-secondary" type="button">Limpiar selección</button>
                                     </div>
-                                    <div class="col-md-4">
-                                        <label class="form-label">Penalizacion por respuesta incorrecta</label>
-                                        <input class="form-control" type="number" name="penalizacion_incorrecta" value="0" min="0">
+                                </fieldset>
+                                <div class="row g-3 game-settings-row">
+                                    <div class="col-xl-4">
+                                        <label class="form-label" for="gameTime">Tiempo por pregunta</label>
+                                        <div class="input-group"><input id="gameTime" class="form-control" type="number" name="tiempo_por_pregunta" value="30" min="5" max="1800"><span class="input-group-text">segundos</span></div>
+                                    </div>
+                                    <div class="col-xl-4">
+                                        <label class="form-label" for="gameCorrectPoints">Puntos correctos</label>
+                                        <div class="input-group"><input id="gameCorrectPoints" class="form-control" type="number" name="puntos_correcta" value="10" min="0"><span class="input-group-text">puntos</span></div>
+                                    </div>
+                                    <div class="col-xl-4">
+                                        <label class="form-label" for="gameIncorrectPenalty">Penalización incorrecta</label>
+                                        <div class="input-group"><input id="gameIncorrectPenalty" class="form-control" type="number" name="penalizacion_incorrecta" value="0" min="0"><span class="input-group-text">puntos</span></div>
                                     </div>
                                 </div>
-                                <button class="btn btn-success">Crear sala</button>
-                                <div id="partidaMessage" class="small-message"></div>
+                                <button id="createGame" class="btn btn-success">Crear sala</button>
+                                <div id="partidaMessage" class="small-message" role="status" aria-live="polite"></div>
                             </form>
                         </div>
                     </div>
@@ -111,49 +136,83 @@
             </section>
 
             <section class="tab-pane fade" id="liveTab">
-                <div class="live-grid">
-                    <div class="tool-card control-panel">
-                        <h2>Control</h2>
-                        <div class="input-group mb-3">
-                            <input id="liveCode" class="form-control code-input" placeholder="Codigo de sala">
-                            <button id="connectLive" class="btn btn-primary">Abrir</button>
+                <div id="liveConnectPanel" class="tool-card live-connect-panel">
+                    <h2>Abrir una sala existente</h2>
+                    <p class="text-secondary">Usa esta opción para recuperar una partida creada anteriormente.</p>
+                    <label class="form-label" for="liveCode">Código de sala</label>
+                    <div class="input-group">
+                            <input id="liveCode" class="form-control code-input" placeholder="Código de sala" autocomplete="off">
+                            <button id="connectLive" class="btn btn-primary" type="button">Abrir</button>
+                    </div>
+                    <div id="liveOpenMessage" class="small-message mt-2" role="status" aria-live="polite"></div>
+                </div>
+
+                <div id="judgeWaitingRoom" class="tool-card judge-waiting-room d-none">
+                    <div class="waiting-room-heading">
+                        <div>
+                            <span class="eyebrow">Sala de espera</span>
+                            <h2 id="waitingGameName">Partida</h2>
                         </div>
-                        <div class="d-flex flex-wrap gap-2">
-                            <button id="startGame" class="btn btn-success">Iniciar competencia</button>
-                            <button id="nextQuestion" class="btn btn-outline-primary">Siguiente pregunta</button>
-                            <button id="finishGame" class="btn btn-danger">Finalizar</button>
-                        </div>
-                        <div class="status-pill mt-3" id="judgeCompetitionStatus">Sala sin abrir</div>
-                        <div class="small-message mt-2" id="judgeCompetitionMessage">Abre una sala para ver su estado.</div>
-                        <div class="timer mt-3" id="judgeTimer">--</div>
-                        <div class="timer-progress mt-2" aria-hidden="true">
-                            <div id="judgeTimerProgress" class="timer-progress-bar"></div>
+                        <div class="waiting-room-code">
+                            <span>Código de sala</span>
+                            <strong id="waitingGameCode">------</strong>
+                            <button id="copyWaitingCode" class="btn btn-sm btn-outline-primary" type="button">Copiar código</button>
                         </div>
                     </div>
-                    <div class="tool-card">
-                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-                            <h2 class="mb-0">Pregunta actual</h2>
-                            <span id="judgeQuestionNumber" class="question-counter">Pregunta -- / --</span>
+                    <div class="waiting-room-summary"><strong id="waitingConnectedCount">0</strong> equipos conectados</div>
+                    <div id="waitingParticipants" class="waiting-participant-list"></div>
+                    <div id="waitingRoomMessage" class="small-message" role="status" aria-live="polite"></div>
+                    <div class="waiting-room-actions">
+                        <button id="startGame" class="btn btn-success btn-lg" type="button">Iniciar competencia</button>
+                    </div>
+                </div>
+
+                <div id="judgeCompetitionPanel" class="d-none">
+                    <div class="live-grid">
+                        <div class="judge-control-column">
+                            <div class="tool-card control-panel">
+                                <h2>Control</h2>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button id="nextQuestion" class="btn btn-outline-primary" type="button">Siguiente pregunta</button>
+                                    <button id="finishGame" class="btn btn-danger" type="button">Finalizar</button>
+                                </div>
+                                <div class="status-pill mt-3" id="judgeCompetitionStatus">Sala sin abrir</div>
+                                <div class="small-message mt-2" id="judgeCompetitionMessage" role="status" aria-live="polite">Abre una sala para ver su estado.</div>
+                                <div class="timer mt-3" id="judgeTimer">--</div>
+                                <div class="timer-progress mt-2" aria-hidden="true">
+                                    <div id="judgeTimerProgress" class="timer-progress-bar"></div>
+                                </div>
+                            </div>
+                            <div class="tool-card">
+                                <h2>Solicitudes de palabra</h2>
+                                <div id="wordRequests" class="list-panel"></div>
+                            </div>
                         </div>
-                        <div id="judgeQuestion" class="question-preview">Sin sala abierta.</div>
-                        <img id="judgeQuestionImage" class="judge-live-image d-none" alt="Imagen de pregunta">
-                        <div class="answer-preview mt-3">
-                            <small>Respuesta esperada</small>
-                            <div id="judgeAnswer">Sin respuesta cargada.</div>
-                            <img id="judgeAnswerImage" class="judge-live-image d-none" alt="Imagen de respuesta">
+                        <div class="tool-card question-panel">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                <h2 class="mb-0">Pregunta actual</h2>
+                                <span id="judgeQuestionNumber" class="question-counter">Pregunta -- / --</span>
+                            </div>
+                            <div id="judgeQuestion" class="question-preview">Sin sala abierta.</div>
+                            <img id="judgeQuestionImage" class="judge-live-image d-none" alt="Imagen de pregunta">
+                            <button id="expandQuestionImage" class="btn btn-sm btn-outline-primary mt-2 d-none" type="button">Ampliar imagen</button>
+                            <div class="answer-preview mt-3">
+                                <small>Respuesta esperada</small>
+                                <div id="judgeAnswer">Sin respuesta cargada.</div>
+                                <img id="judgeAnswerImage" class="judge-live-image d-none" alt="Imagen de respuesta">
+                                <button id="expandAnswerImage" class="btn btn-sm btn-outline-primary mt-2 d-none" type="button">Ampliar imagen</button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="tool-card">
-                        <h2>Solicitudes de palabra</h2>
-                        <div id="wordRequests" class="list-panel"></div>
-                    </div>
-                    <div class="tool-card">
-                        <h2>Equipos conectados</h2>
-                        <div id="connectedParticipants" class="list-panel"></div>
-                    </div>
-                    <div class="tool-card">
-                        <h2>Marcador</h2>
-                        <div id="judgeRanking" class="list-panel"></div>
+                        <div class="judge-live-bottom">
+                            <div class="tool-card">
+                                <h2>Equipos conectados</h2>
+                                <div id="connectedParticipants" class="list-panel"></div>
+                            </div>
+                            <div class="tool-card">
+                                <h2>Marcador</h2>
+                                <div id="judgeRanking" class="list-panel"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -167,11 +226,29 @@
         </div>
     </section>
 </main>
+
+<div class="modal fade question-image-modal" id="judgeImageModal" tabindex="-1" aria-labelledby="judgeImageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="judgeImageModalLabel">Imagen ampliada</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar imagen ampliada"></button>
+            </div>
+            <div class="modal-body">
+                <img id="judgeImageModalContent" class="question-image-modal-full" alt="Imagen ampliada">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/content_filters.js') }}"></script>
+<script src="{{ url_for('static', filename='js/judge_game_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='js/judge_dashboard.js') }}"></script>
 {% endblock %}
 

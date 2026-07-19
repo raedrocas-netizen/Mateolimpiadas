@@ -16,6 +16,15 @@ const imageModal = bootstrap.Modal.getOrCreateInstance(imageModalElement);
 const imageModalName = document.getElementById("imagePreviewModalName");
 const imageModalImage = document.getElementById("imagePreviewModalImage");
 const imageModalDownload = document.getElementById("imagePreviewModalDownload");
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".jfif",
+    ".webp",
+    ".gif",
+    ".avif"
+]);
 const imagePreviews = {
     question: createImagePreview(
         "question",
@@ -177,10 +186,15 @@ function previewSelectedImage(preview) {
         return;
     }
 
-    if (!file.type || !file.type.startsWith("image/")) {
+    const extensionIndex = file.name.lastIndexOf(".");
+    const extension = extensionIndex >= 0
+        ? file.name.slice(extensionIndex).toLocaleLowerCase("en")
+        : "";
+
+    if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) {
         preview.input.value = "";
         restoreSavedImage(preview);
-        setQuestionMessage(`El archivo "${file.name}" no es una imagen valida.`, false);
+        setQuestionMessage(`El formato de "${file.name}" no esta permitido.`, false);
         return;
     }
 

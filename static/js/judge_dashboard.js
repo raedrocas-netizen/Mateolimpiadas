@@ -9,9 +9,22 @@ let liveTotalQuestions = null;
 let materias = [];
 let cuestionarios = [];
 let partidas = [];
+let selectedQuestionnaireIds = new Set();
+let gameAreaSelectedManually = false;
+let gameCreationPending = false;
+let codeGenerationPending = false;
+let pendingLiveAction = "";
+let liveTransitionActive = false;
+let liveTimerRemaining = null;
+let pendingParticipantDeletions = new Set();
 const QUESTIONNAIRE_ACTIVE_STATUS = "ACTIVO";
+const GAME_STATUS_WAITING = "ESPERANDO";
+const GAME_STATUS_IN_PROGRESS = "EN_CURSO";
+const GAME_STATUS_PAUSED = "PAUSADA";
+const GAME_STATUS_FINISHED = "FINALIZADA";
 
 const $ = selector => document.querySelector(selector);
+const judgeImageModal = bootstrap.Modal.getOrCreateInstance($("#judgeImageModal"));
 
 function optionList(items, valueKey, textKey) {
     return items.map(item => {
@@ -38,9 +51,11 @@ function setMessage(target, message, success = true) {
 function loadCatalogs() {
     return apiFetch("/api/catalogos").then(data => {
         catalogs = data;
-        document.querySelectorAll('select[name="area"]').forEach(select => {
-            select.innerHTML = optionList(data.areas);
-        });
+        $("#cuestionarioForm").area.innerHTML = optionList(data.areas);
+        $("#gameArea").innerHTML = (
+            '<option value="">Seleccionar área</option>'
+            + optionList(data.areas)
+        );
         document.querySelectorAll('select[name="estado"]').forEach(select => {
             select.innerHTML = optionList(data.estados_cuestionario);
         });
@@ -105,10 +120,11 @@ function renderCuestionarios(updateSelectors = true) {
             : `${cuestionarios.length} cuestionarios`;
         $("#clearQuestionnaireSearch").disabled = !hasSearch;
         if (updateSelectors) {
-            document.querySelectorAll('select[name="id_cuestionario"], select[name="id_cuestionarios"]').forEach(select => {
+            document.querySelectorAll('select[name="id_cuestionario"]').forEach(select => {
                 select.innerHTML = optionList(cuestionarios, "id_cuestionario", "nombre");
             });
         }
+        renderGameQuestionnaires();
 }
 
 function upsertLocal(items, item, key) {
@@ -137,26 +153,214 @@ function refreshPartidas() {
 
 function renderPartidas() {
         const partidaDetails = item => [
+            `Cuestionarios: ${escapeHtml(item.cuestionarios || "Sin cuestionario")}`,
+            `Materia: ${escapeHtml(item.materias || "Sin materia")}`,
+            `Área: ${escapeHtml(item.area || "")}`,
+            `<span class="badge text-bg-light border">${escapeHtml(item.estado || "Sin estado")}</span>`,
+            `Participantes: ${Number(item.participantes_conectados || 0)} conectados de ${Number(item.total_participantes || 0)}`
+        ].join("<br>");
+        const historyDetails = item => [
             `Cuestionario: ${escapeHtml(item.cuestionarios || "Sin cuestionario")}`,
             `Materia: ${escapeHtml(item.materias || "Sin materia")}`,
             `Nivel: ${escapeHtml(item.area || "")}`,
             `Estado: ${escapeHtml(item.estado || "")}`,
             `Participantes: ${item.participantes_conectados || 0}/${item.total_participantes || 0}`
         ].join("<br>");
-        const openButton = item => `<button class="btn btn-sm btn-primary" onclick="openLive('${item.codigo_partida}')">Abrir</button>`;
+        const openButton = item => `<button class="btn btn-sm btn-primary" onclick="openLive('${item.codigo_partida}')">${JudgeGameHelpers.gameActionLabel(item.estado)}</button>`;
+        const historyOpenButton = item => `<button class="btn btn-sm btn-primary" onclick="openLive('${item.codigo_partida}')">Abrir</button>`;
+        const copyButton = item => `<button class="btn btn-sm btn-outline-primary" onclick="copyGameCode('${item.codigo_partida}')">Copiar código</button>`;
         const markup = partidas.map(item => row(
-            `${item.codigo_partida} - ${item.nombre}`,
+            `${item.nombre} · ${item.codigo_partida}`,
             partidaDetails(item),
-            `${openButton(item)}
+            `${openButton(item)} ${copyButton(item)}
              <button class="btn btn-sm btn-outline-danger" onclick="deletePartida(${item.id_partida})">Eliminar</button>`
         )).join("");
         const historyMarkup = partidas.map(item => row(
             `${item.codigo_partida} - ${item.nombre}`,
-            partidaDetails(item),
-            openButton(item)
+            historyDetails(item),
+            historyOpenButton(item)
         )).join("");
         $("#partidasList").innerHTML = markup || "<div class='text-secondary'>No hay partidas creadas.</div>";
         $("#historyList").innerHTML = historyMarkup || "<div class='text-secondary'>No hay historial disponible.</div>";
+}
+
+function showDashboardTab(tabName, updateHash = true) {
+    const trigger = document.querySelector(`[data-dashboard-tab="${tabName}"]`);
+
+    if (!trigger) {
+        return;
+    }
+
+    bootstrap.Tab.getOrCreateInstance(trigger).show();
+
+    if (updateHash && window.location.hash !== `#${tabName}`) {
+        history.replaceState(null, "", `#${tabName}`);
+    }
+}
+
+function syncGameArea() {
+    const areaSelect = $("#gameArea");
+    const areaHelp = $("#gameAreaHelp");
+    const selection = JudgeGameHelpers.questionnaireSelectionState(
+        cuestionarios,
+        selectedQuestionnaireIds,
+        gameAreaSelectedManually,
+        areaSelect.value
+    );
+
+    if (!gameAreaSelectedManually) {
+        areaSelect.value = selection.area;
+    }
+
+    if (selection.requiresManualArea) {
+        areaHelp.textContent = "Los cuestionarios seleccionados pertenecen a distintas áreas. Selecciona manualmente el área que se utilizará para la partida.";
+        areaHelp.classList.add("text-danger");
+        areaSelect.setAttribute("aria-invalid", "true");
+    } else if (gameAreaSelectedManually) {
+        areaHelp.textContent = areaSelect.value
+            ? "Área seleccionada manualmente; no se cambiará al modificar los cuestionarios."
+            : "Selecciona manualmente el área que se utilizará para la partida.";
+        areaHelp.classList.toggle("text-danger", !areaSelect.value);
+        areaSelect.setAttribute("aria-invalid", String(!areaSelect.value));
+    } else if (selection.inferred) {
+        areaHelp.textContent = `Área inferida automáticamente: ${selection.area}.`;
+        areaHelp.classList.remove("text-danger");
+        areaSelect.removeAttribute("aria-invalid");
+    } else {
+        areaHelp.textContent = "Selecciona cuestionarios para inferir el área o elígela manualmente.";
+        areaHelp.classList.remove("text-danger");
+        areaSelect.removeAttribute("aria-invalid");
+    }
+
+    return selection;
+}
+
+function renderGameQuestionnaires() {
+    const search = $("#gameQuestionnaireSearch")?.value || "";
+    const active = JudgeGameHelpers.activeQuestionnaires(cuestionarios);
+    const activeIds = new Set(active.map(item => String(item.id_cuestionario)));
+    selectedQuestionnaireIds = new Set(
+        [...selectedQuestionnaireIds].filter(id => activeIds.has(String(id)))
+    );
+    const filtered = JudgeGameHelpers.filterActiveQuestionnaires(cuestionarios, search);
+    const hasSearch = Boolean(ContentFilters.normalizeSearch(search));
+    const list = $("#gameQuestionnaireList");
+
+    list.innerHTML = filtered.map(item => {
+        const id = String(item.id_cuestionario);
+        const checked = selectedQuestionnaireIds.has(id) ? " checked" : "";
+        const details = [item.materia?.nombre, item.area].filter(Boolean).join(" · ");
+
+        return `
+            <label class="questionnaire-check-option">
+                <input class="form-check-input" type="checkbox" name="id_cuestionarios" value="${escapeHtml(id)}"${checked}>
+                <span>
+                    <strong>${escapeHtml(item.nombre)}</strong>
+                    <small>${escapeHtml(details || "Cuestionario activo")}</small>
+                </span>
+            </label>
+        `;
+    }).join("") || (
+        active.length === 0
+            ? "<div class='text-secondary'>No hay cuestionarios activos disponibles. Administra tus cuestionarios para activar al menos uno.</div>"
+            : "<div class='text-secondary'>No hay cuestionarios activos que coincidan con el filtro.</div>"
+    );
+
+    const selection = syncGameArea();
+    $("#gameQuestionnaireSummary").textContent = (
+        `${selection.selectedCount} cuestionario${selection.selectedCount === 1 ? "" : "s"} seleccionado${selection.selectedCount === 1 ? "" : "s"}`
+        + (hasSearch ? ` · ${filtered.length} visibles de ${active.length}` : "")
+    );
+    $("#clearGameQuestionnaireSearch").disabled = !hasSearch;
+    $("#clearGameQuestionnaireSelection").disabled = selection.selectedCount === 0;
+}
+
+function generateGameCode() {
+    const button = $("#generateCode");
+
+    if (codeGenerationPending) {
+        return Promise.resolve("");
+    }
+
+    codeGenerationPending = true;
+    button.disabled = true;
+    button.textContent = "Generando...";
+
+    return apiFetch("/api/partidas/generar-codigo").then(payload => {
+        if (!payload.success || !payload.data) {
+            throw new Error(payload.message || "No fue posible generar un código de sala.");
+        }
+
+        $("#gameCode").value = payload.data;
+        return payload.data;
+    }).catch(error => {
+        setMessage($("#partidaMessage"), error.message || "No fue posible generar un código de sala.", false);
+        return "";
+    }).finally(() => {
+        codeGenerationPending = false;
+        button.disabled = false;
+        button.textContent = "Generar nuevo";
+    });
+}
+
+function resetGameForm({clearMessage = true, generateCode = true} = {}) {
+    const form = $("#partidaForm");
+    form.reset();
+    selectedQuestionnaireIds = new Set();
+    gameAreaSelectedManually = false;
+    $("#gameQuestionnaireSearch").value = "";
+    $("#gameArea").value = "";
+    renderGameQuestionnaires();
+
+    if (clearMessage) {
+        setMessage($("#partidaMessage"), "", true);
+    }
+
+    if (generateCode) {
+        generateGameCode();
+    }
+}
+
+function fallbackCopyText(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+}
+
+async function copyText(text) {
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+    }
+
+    return fallbackCopyText(text);
+}
+
+async function copyGameCode(code) {
+    const normalizedCode = String(code || "").trim().toUpperCase();
+
+    if (!normalizedCode) {
+        return;
+    }
+
+    try {
+        const copied = await copyText(normalizedCode);
+        if (liveCode === normalizedCode) {
+            setLiveMessage(copied ? `Código ${normalizedCode} copiado.` : "No fue posible copiar el código.", copied);
+        } else {
+            setMessage($("#partidasMessage"), copied ? `Código ${normalizedCode} copiado.` : "No fue posible copiar el código.", copied);
+        }
+    } catch (error) {
+        console.warn("No fue posible copiar el código de sala.", error);
+        setMessage($("#partidasMessage"), "No fue posible copiar el código. Selecciónalo manualmente.", false);
+    }
 }
 
 function bindForm(selector, url, afterSave = refreshAll) {
@@ -296,6 +500,57 @@ $("#clearQuestionnaireSearch").addEventListener("click", () => {
     $("#questionnaireSearch").focus();
 });
 
+document.querySelectorAll("[data-go-to-tab]").forEach(button => {
+    button.addEventListener("click", () => showDashboardTab(button.dataset.goToTab));
+});
+
+document.querySelectorAll("[data-dashboard-tab]").forEach(button => {
+    button.addEventListener("shown.bs.tab", () => {
+        const tabName = button.dataset.dashboardTab;
+        history.replaceState(null, "", `#${tabName}`);
+
+        if (tabName === "partidas" && !$("#gameCode").value) {
+            generateGameCode();
+        }
+    });
+});
+
+$("#gameQuestionnaireSearch").addEventListener("input", renderGameQuestionnaires);
+
+$("#clearGameQuestionnaireSearch").addEventListener("click", () => {
+    $("#gameQuestionnaireSearch").value = "";
+    renderGameQuestionnaires();
+    $("#gameQuestionnaireSearch").focus();
+});
+
+$("#gameQuestionnaireList").addEventListener("change", event => {
+    const checkbox = event.target.closest('input[name="id_cuestionarios"]');
+
+    if (!checkbox) {
+        return;
+    }
+
+    const id = String(checkbox.value);
+
+    if (checkbox.checked) {
+        selectedQuestionnaireIds.add(id);
+    } else {
+        selectedQuestionnaireIds.delete(id);
+    }
+
+    renderGameQuestionnaires();
+});
+
+$("#clearGameQuestionnaireSelection").addEventListener("click", () => {
+    selectedQuestionnaireIds = new Set();
+    renderGameQuestionnaires();
+});
+
+$("#gameArea").addEventListener("change", event => {
+    gameAreaSelectedManually = Boolean(event.currentTarget.value);
+    syncGameArea();
+});
+
 $("#refreshQuestionnaires").addEventListener("click", async event => {
     const button = event.currentTarget;
     button.disabled = true;
@@ -383,23 +638,52 @@ $("#cuestionarioForm").addEventListener("submit", event => {
     });
 });
 
-$("#generateCode").addEventListener("click", () => {
-    apiFetch("/api/partidas/generar-codigo").then(payload => {
-        $("#partidaForm").codigo_partida.value = payload.data;
-    });
-});
+$("#generateCode").addEventListener("click", generateGameCode);
 
-$("#partidaForm").addEventListener("submit", event => {
+$("#partidaForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const data = formJson(event.currentTarget);
+
+    if (gameCreationPending) {
+        return;
+    }
+
+    const form = event.currentTarget;
+    const selection = syncGameArea();
+    const submitButton = $("#createGame");
     const message = $("#partidaMessage");
-    let createdSuccessfully = false;
-    data.id_cuestionarios = Array.from(event.currentTarget.id_cuestionarios.selectedOptions).map(option => option.value);
+
+    if (selection.selectedCount === 0) {
+        setMessage(message, "Selecciona al menos un cuestionario activo.", false);
+        $("#gameQuestionnaireList").focus();
+        return;
+    }
+
+    if (!form.area.value) {
+        setMessage(message, selection.requiresManualArea
+            ? "Los cuestionarios pertenecen a distintas áreas. Selecciona manualmente el área de la partida."
+            : "Selecciona el área de la partida.", false);
+        form.area.focus();
+        return;
+    }
+
+    if (!form.reportValidity()) {
+        return;
+    }
+
+    const data = formJson(event.currentTarget);
+    const selectedQuestionnaires = selection.selected.map(item => item.nombre).join(", ");
+    data.id_cuestionarios = [...selectedQuestionnaireIds];
+    gameCreationPending = true;
+    submitButton.disabled = true;
+    submitButton.textContent = "Creando sala...";
     setMessage(message, "Creando sala...", true);
-    apiFetch("/api/partidas", {
-        method: "POST",
-        body: JSON.stringify(data)
-    }).then(payload => {
+
+    try {
+        const payload = await apiFetch("/api/partidas", {
+            method: "POST",
+            body: JSON.stringify(data)
+        });
+
         if (!payload.success) {
             setMessage(message, payload.message || "No fue posible crear la sala.", false);
             return;
@@ -407,7 +691,6 @@ $("#partidaForm").addEventListener("submit", event => {
 
         const createdGame = payload.data || {};
         const roomCode = createdGame.codigo_partida || data.codigo_partida;
-        createdSuccessfully = true;
 
         if (!roomCode) {
             setMessage(message, "Sala creada correctamente. Actualiza el listado si no aparece.", true);
@@ -415,9 +698,6 @@ $("#partidaForm").addEventListener("submit", event => {
         }
 
         setMessage(message, `Sala ${roomCode} creada correctamente.`, true);
-        const selectedQuestionnaires = Array.from(event.currentTarget.id_cuestionarios.selectedOptions)
-            .map(option => option.textContent)
-            .join(", ");
         upsertPartida(
             {
                 ...createdGame,
@@ -430,32 +710,319 @@ $("#partidaForm").addEventListener("submit", event => {
         );
         renderPartidas();
         openLive(roomCode);
-        event.currentTarget.reset();
-    }).catch(error => {
-        if (createdSuccessfully) {
-            console.warn("La sala fue creada, pero hubo un detalle al actualizar la interfaz.", error);
-            setMessage(message, "Sala creada correctamente.", true);
-            return;
-        }
-
-        setMessage(message, "No fue posible crear la sala. Revise la informacion ingresada.", false);
-    });
+        resetGameForm({clearMessage: false, generateCode: true});
+    } catch (error) {
+        console.warn("No fue posible crear la sala.", error);
+        setMessage(message, "No fue posible crear la sala. Revisa la información ingresada e inténtalo de nuevo.", false);
+    } finally {
+        gameCreationPending = false;
+        submitButton.disabled = false;
+        submitButton.textContent = "Crear sala";
+    }
 });
 
 function openLive(code) {
-    liveCode = String(code || "").toUpperCase();
+    const normalizedCode = String(code || "").trim().toUpperCase();
+
+    if (!normalizedCode) {
+        setMessage($("#liveOpenMessage"), "Ingresa un código de sala válido.", false);
+        showDashboardTab("competencia");
+        $("#liveCode").focus();
+        return;
+    }
+
+    if (liveCode !== normalizedCode) {
+        liveState = {};
+        liveParticipants = [];
+        liveRequests = [];
+        liveQuestionId = null;
+        liveTotalQuestions = null;
+        liveTimerRemaining = null;
+        liveTransitionActive = false;
+        pendingParticipantDeletions = new Set();
+        clearPendingLiveAction();
+        renderJudgeLayout();
+    }
+
+    liveCode = normalizedCode;
     $("#liveCode").value = liveCode;
+    setMessage($("#liveOpenMessage"), `Abriendo sala ${liveCode}...`, true);
+    $("#connectLive").disabled = true;
+    $("#connectLive").textContent = "Abriendo...";
     judgeSocket.emit("juez_unirse", {codigo_partida: liveCode});
-    document.querySelector('[data-bs-target="#liveTab"]')?.click();
+    showDashboardTab("competencia");
 }
 
 $("#connectLive").addEventListener("click", () => openLive($("#liveCode").value));
-$("#startGame").addEventListener("click", () => judgeSocket.emit("iniciar_competencia", {codigo_partida: liveCode}));
-$("#nextQuestion").addEventListener("click", () => judgeSocket.emit("siguiente_pregunta", {codigo_partida: liveCode}));
-$("#finishGame").addEventListener("click", () => judgeSocket.emit("finalizar_competencia", {codigo_partida: liveCode}));
+$("#liveCode").addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        openLive(event.currentTarget.value);
+    }
+});
+
+function currentGameState() {
+    return liveState?.partida?.estado || "";
+}
+
+function updateLiveActionButtons() {
+    const state = currentGameState();
+    const startButton = $("#startGame");
+    const nextButton = $("#nextQuestion");
+    const finishButton = $("#finishGame");
+
+    startButton.classList.toggle("d-none", state !== GAME_STATUS_WAITING);
+    startButton.disabled = (
+        state !== GAME_STATUS_WAITING
+        || Boolean(pendingLiveAction)
+        || liveTransitionActive
+    );
+    startButton.textContent = pendingLiveAction === "start" ? "Iniciando..." : "Iniciar competencia";
+
+    nextButton.disabled = (
+        state !== GAME_STATUS_IN_PROGRESS
+        || Boolean(pendingLiveAction)
+        || liveTransitionActive
+    );
+    nextButton.textContent = pendingLiveAction === "finish-time"
+        ? "Finalizando tiempo..."
+        : pendingLiveAction === "next"
+            ? "Preparando siguiente..."
+            : "Siguiente pregunta";
+
+    finishButton.classList.toggle(
+        "d-none",
+        ![GAME_STATUS_IN_PROGRESS, GAME_STATUS_PAUSED].includes(state)
+    );
+    finishButton.disabled = (
+        ![GAME_STATUS_IN_PROGRESS, GAME_STATUS_PAUSED].includes(state)
+        || Boolean(pendingLiveAction)
+        || liveTransitionActive
+    );
+    finishButton.textContent = pendingLiveAction === "finish" ? "Finalizando..." : "Finalizar";
+}
+
+function setPendingLiveAction(action) {
+    if (pendingLiveAction) {
+        return false;
+    }
+
+    pendingLiveAction = action;
+    updateLiveActionButtons();
+    return true;
+}
+
+function clearPendingLiveAction() {
+    pendingLiveAction = "";
+    updateLiveActionButtons();
+}
+
+function setLiveMessage(message, success = true) {
+    setMessage($("#judgeCompetitionMessage"), message, success);
+    setMessage($("#waitingRoomMessage"), message, success);
+}
+
+function registeredParticipants(participants = liveParticipants) {
+    return (participants || []).filter(item => (
+        item.id_participante || item.codigo_participante || item.nombre
+    ));
+}
+
+function renderWaitingRoom() {
+    const participants = registeredParticipants();
+    const connectedCount = participants.filter(item => Number(item.conectado) === 1).length;
+    const waiting = currentGameState() === GAME_STATUS_WAITING;
+    $("#waitingGameName").textContent = liveState?.partida?.nombre || "Partida";
+    $("#waitingGameCode").textContent = liveCode || liveState?.partida?.codigo_partida || "------";
+    $("#waitingConnectedCount").textContent = String(connectedCount);
+    $("#waitingParticipants").innerHTML = participants.map(item => {
+        const id = Number(item.id_participante);
+        const pending = pendingParticipantDeletions.has(id);
+        const connected = Number(item.conectado) === 1;
+        const memberText = String(item.integrantes || "").trim();
+        const siteIdentity = JudgeGameHelpers.teamSiteIdentity(item.sede);
+        const siteStyle = [
+            `--site-accent:${siteIdentity.accent}`,
+            `--site-tint:${siteIdentity.tint}`,
+            `--site-detail:${siteIdentity.detail}`
+        ].join(";");
+
+        return `
+            <article class="waiting-participant-card" data-site-identity="${siteIdentity.key}" style="${siteStyle}">
+                <div class="waiting-participant-head">
+                    <div>
+                        <div class="waiting-participant-site">
+                            <span class="site-identity-dot" aria-hidden="true"></span>
+                            <strong>${escapeHtml(item.sede || item.nombre || "Equipo")}</strong>
+                        </div>
+                        <small>${escapeHtml(item.nombre || "Equipo registrado")}</small>
+                    </div>
+                    <span class="badge ${connected ? "text-bg-success" : "text-bg-secondary"}">${connected ? "Conectado" : "Desconectado"}</span>
+                </div>
+                ${memberText ? `<small><strong>Integrantes:</strong> ${escapeHtml(memberText)}</small>` : ""}
+                ${waiting && id ? `<button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteWaitingParticipant(${id})"${pending ? " disabled" : ""}>${pending ? "Eliminando..." : "Eliminar equipo"}</button>` : ""}
+            </article>
+        `;
+    }).join("") || "<div class='text-secondary'>Aún no hay equipos registrados en esta sala.</div>";
+    updateLiveActionButtons();
+}
+
+function syncActiveGameSummary() {
+    const game = liveState?.partida;
+
+    if (!game?.codigo_partida) {
+        return;
+    }
+
+    const participants = registeredParticipants();
+    const connectedCount = participants.filter(item => Number(item.conectado) === 1).length;
+    const existing = partidas.find(item => (
+        String(item.codigo_partida).toUpperCase() === String(game.codigo_partida).toUpperCase()
+    ));
+    upsertPartida({
+        ...(existing || {}),
+        ...game,
+        total_participantes: participants.length,
+        participantes_conectados: connectedCount
+    });
+    renderPartidas();
+}
+
+function renderJudgeLayout() {
+    const state = currentGameState();
+    const waiting = state === GAME_STATUS_WAITING || state === "BORRADOR";
+    const competition = [
+        GAME_STATUS_IN_PROGRESS,
+        GAME_STATUS_PAUSED,
+        GAME_STATUS_FINISHED
+    ].includes(state) || liveTransitionActive;
+    const hasRoom = Boolean(liveState?.partida);
+
+    $("#liveConnectPanel").classList.toggle("d-none", hasRoom);
+    $("#judgeWaitingRoom").classList.toggle("d-none", !waiting || liveTransitionActive);
+    $("#judgeCompetitionPanel").classList.toggle("d-none", !competition);
+    renderWaitingRoom();
+    updateLiveActionButtons();
+}
+
+function requestFinishGame(fromLastQuestion = false) {
+    if (pendingLiveAction || liveTransitionActive) {
+        return;
+    }
+
+    const confirmed = window.confirm(fromLastQuestion
+        ? "No hay más preguntas restantes.\nLa partida se finalizará."
+        : "¿Deseas finalizar la competencia? Esta acción mostrará el resultado final.");
+
+    if (!confirmed || !setPendingLiveAction("finish")) {
+        return;
+    }
+
+    setLiveMessage("Finalizando competencia...", true);
+    judgeSocket.emit("finalizar_competencia", {codigo_partida: liveCode});
+}
+
+$("#startGame").addEventListener("click", () => {
+    if (currentGameState() !== GAME_STATUS_WAITING || !setPendingLiveAction("start")) {
+        return;
+    }
+
+    setLiveMessage("Iniciando competencia...", true);
+    judgeSocket.emit("iniciar_competencia", {codigo_partida: liveCode});
+});
+
+$("#nextQuestion").addEventListener("click", () => {
+    const action = JudgeGameHelpers.nextQuestionAction({
+        gameState: currentGameState(),
+        remaining: liveTimerRemaining,
+        currentQuestion: liveState?.partida?.pregunta_actual,
+        totalQuestions: liveTotalQuestions,
+        transitionActive: liveTransitionActive || Boolean(pendingLiveAction)
+    });
+
+    if (action === "finish_time") {
+        const confirmed = window.confirm(
+            "El tiempo de la pregunta todavía no ha finalizado.\n¿Deseas finalizar el tiempo actual?"
+        );
+
+        if (!confirmed || !setPendingLiveAction("finish-time")) {
+            return;
+        }
+
+        judgeSocket.emit("siguiente_pregunta", {
+            codigo_partida: liveCode,
+            finalizar_tiempo_actual: true
+        });
+        return;
+    }
+
+    if (action === "finish_game") {
+        requestFinishGame(true);
+        return;
+    }
+
+    if (action !== "advance" || !setPendingLiveAction("next")) {
+        return;
+    }
+
+    setLiveMessage("Preparando la siguiente pregunta...", true);
+    judgeSocket.emit("siguiente_pregunta", {codigo_partida: liveCode});
+});
+
+$("#finishGame").addEventListener("click", () => requestFinishGame(false));
+
+$("#copyWaitingCode").addEventListener("click", () => copyGameCode(liveCode));
+
+function deleteWaitingParticipant(id) {
+    const participantId = Number(id);
+
+    if (
+        !participantId
+        || pendingParticipantDeletions.has(participantId)
+        || currentGameState() !== GAME_STATUS_WAITING
+    ) {
+        return;
+    }
+
+    const participant = liveParticipants.find(item => Number(item.id_participante) === participantId);
+    const confirmed = window.confirm(
+        `¿Eliminar a ${participant?.sede || participant?.nombre || "este equipo"} de la sala de espera?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    pendingParticipantDeletions.add(participantId);
+    renderWaitingRoom();
+    setLiveMessage("Eliminando equipo de la sala de espera...", true);
+    judgeSocket.emit("eliminar_participante_espera", {
+        codigo_partida: liveCode,
+        id_participante: participantId
+    });
+}
+
+function openJudgeImage(url, label) {
+    if (!url) {
+        return;
+    }
+
+    $("#judgeImageModalLabel").textContent = label;
+    $("#judgeImageModalContent").src = url;
+    $("#judgeImageModalContent").alt = label;
+    judgeImageModal.show();
+}
+
+$("#expandQuestionImage").addEventListener("click", () => {
+    openJudgeImage($("#judgeQuestionImage").src, "Imagen de la pregunta ampliada");
+});
+
+$("#expandAnswerImage").addEventListener("click", () => {
+    openJudgeImage($("#judgeAnswerImage").src, "Imagen de la respuesta esperada ampliada");
+});
 
 function renderRequests(requests, state = {}) {
-    const orderedRequests = sortRequests(requests || []);
+    const orderedRequests = JudgeGameHelpers.activeWordRequests(requests);
     const activeTurn = orderedRequests.some(item => item.estado === "EN_TURNO");
     const firstQueued = orderedRequests.find(item => item.estado === "EN_COLA");
     const closedQuestion = [
@@ -587,8 +1154,8 @@ function upsertBy(items, item, key) {
     return [...items, item];
 }
 
-function sortRequests(requests) {
-    return (requests || []).sort((a, b) => (a.orden_solicitud || 0) - (b.orden_solicitud || 0));
+function activeRequests(requests) {
+    return JudgeGameHelpers.activeWordRequests(requests);
 }
 
 function filterRequestsForQuestion(requests, questionId = liveQuestionId) {
@@ -604,7 +1171,7 @@ function filterRequestsForQuestion(requests, questionId = liveQuestionId) {
 }
 
 function mergeRequests(current, incoming) {
-    return sortRequests((incoming || []).reduce(
+    return activeRequests((incoming || []).reduce(
         (items, item) => upsertBy(items, item, "id_solicitud"),
         [...(current || [])]
     ));
@@ -618,13 +1185,15 @@ function renderCompetitionStatus(stateOrEvent) {
     $("#judgeCompetitionMessage").textContent = message;
 }
 
-function renderImage(target, url) {
+function renderImage(target, url, expandButton = null) {
     if (url) {
         target.src = url;
         target.classList.remove("d-none");
+        expandButton?.classList.remove("d-none");
     } else {
         target.removeAttribute("src");
         target.classList.add("d-none");
+        expandButton?.classList.add("d-none");
     }
 }
 
@@ -637,8 +1206,8 @@ function updateQuestionCounter(target, question = null, total = liveTotalQuestio
 function renderJudgeQuestion(question, fallback = "Esperando que el juez inicie la competencia.") {
     $("#judgeQuestion").textContent = question?.enunciado || fallback;
     $("#judgeAnswer").textContent = question?.respuesta_correcta || "Sin respuesta cargada.";
-    renderImage($("#judgeQuestionImage"), question?.imagen);
-    renderImage($("#judgeAnswerImage"), question?.imagen_respuesta);
+    renderImage($("#judgeQuestionImage"), question?.imagen, $("#expandQuestionImage"));
+    renderImage($("#judgeAnswerImage"), question?.imagen_respuesta, $("#expandAnswerImage"));
     updateQuestionCounter($("#judgeQuestionNumber"), question);
 }
 
@@ -655,30 +1224,39 @@ function markIncorrect(id) {
 }
 
 judgeSocket.on("estado_sala", state => {
+    if (!state?.partida) {
+        $("#connectLive").disabled = false;
+        $("#connectLive").textContent = "Abrir";
+        setMessage($("#liveOpenMessage"), "La sala indicada no existe o no está disponible.", false);
+        return;
+    }
+
+    const stateCode = String(state.partida.codigo_partida || "").toUpperCase();
+
+    if (liveCode && stateCode && stateCode !== liveCode) {
+        return;
+    }
+
+    liveCode = stateCode || liveCode;
+    $("#liveCode").value = liveCode;
+    $("#connectLive").disabled = false;
+    $("#connectLive").textContent = "Abrir";
+    setMessage($("#liveOpenMessage"), `Sala ${liveCode} abierta correctamente.`, true);
     const stateQuestionId = state.pregunta?.id_partida_pregunta || null;
-    const sameQuestion = (
-        liveQuestionId
-        && stateQuestionId
-        && String(liveQuestionId) === String(stateQuestionId)
-    );
     const stateRequests = filterRequestsForQuestion(
         state.solicitudes || [],
         stateQuestionId
-    );
-    const shouldMergeRequests = sameQuestion || (
-        liveRequests.length > 0
-        && stateQuestionId
-        && !liveQuestionId
     );
 
     liveState = state;
     liveQuestionId = stateQuestionId;
     liveTotalQuestions = state.ranking?.total_questions || liveTotalQuestions;
+    liveTimerRemaining = normalizedTimerValue(state.timer);
+    liveTransitionActive = false;
     liveParticipants = state.participantes || [];
-    liveRequests = shouldMergeRequests
-        ? mergeRequests(filterRequestsForQuestion(liveRequests, stateQuestionId), stateRequests)
-        : sortRequests(stateRequests);
+    liveRequests = activeRequests(stateRequests);
     renderCompetitionStatus(state);
+    setMessage($("#waitingRoomMessage"), state.mensaje_estado || "Sala lista para recibir equipos.", true);
     renderTimer(
         $("#judgeTimer"),
         {
@@ -691,18 +1269,99 @@ judgeSocket.on("estado_sala", state => {
     renderRanking($("#judgeRanking"), state.ranking);
     renderRequests(liveRequests, state);
     renderParticipants(liveParticipants);
+    renderJudgeLayout();
+    syncActiveGameSummary();
 
-    if (state.partida?.estado === "EN_CURSO" && state.pregunta) {
+    if ([GAME_STATUS_IN_PROGRESS, GAME_STATUS_PAUSED].includes(state.partida?.estado) && state.pregunta) {
         renderJudgeQuestion(state.pregunta, "Pregunta actual.");
-    } else if (state.partida?.estado === "FINALIZADA") {
+    } else if (state.partida?.estado === GAME_STATUS_FINISHED) {
         renderJudgeQuestion(null, "Competencia finalizada.");
     } else {
         renderJudgeQuestion(null, "Esperando que el juez inicie la competencia.");
     }
+
+    if (
+        pendingLiveAction === "finish-time"
+        || state.partida?.estado === GAME_STATUS_FINISHED
+    ) {
+        clearPendingLiveAction();
+    } else {
+        updateLiveActionButtons();
+    }
+});
+
+judgeSocket.on("error_sala", payload => {
+    console.warn("No fue posible completar la acción de sala.", payload);
+    $("#connectLive").disabled = false;
+    $("#connectLive").textContent = "Abrir";
+    clearPendingLiveAction();
+    setMessage($("#liveOpenMessage"), payload?.message || "No fue posible abrir la sala.", false);
+    setLiveMessage(payload?.message || "No fue posible completar la acción.", false);
+
+    if (!liveState?.partida) {
+        $("#liveConnectPanel").classList.remove("d-none");
+    }
+});
+
+judgeSocket.on("resultado_accion", payload => {
+    if (!payload?.success) {
+        clearPendingLiveAction();
+        setLiveMessage(payload?.message || "No fue posible completar la acción.", false);
+        return;
+    }
+
+    setLiveMessage(payload.message || "Acción completada correctamente.", true);
+
+    if (pendingLiveAction === "finish-time") {
+        liveTimerRemaining = 0;
+        liveState = {
+            ...liveState,
+            timer: {
+                ...(liveState.timer || {}),
+                remaining: 0,
+                exhausted: true,
+                active_since: null
+            }
+        };
+        renderTimer($("#judgeTimer"), liveState.timer, $("#judgeTimerProgress"));
+    }
+
+    if (pendingLiveAction !== "finish") {
+        clearPendingLiveAction();
+    }
+});
+
+judgeSocket.on("participante_eliminado_espera", payload => {
+    const participantId = Number(payload?.id_participante);
+
+    if (participantId) {
+        pendingParticipantDeletions.delete(participantId);
+    }
+
+    if (!payload?.success) {
+        renderWaitingRoom();
+        setLiveMessage(payload?.message || "No fue posible eliminar el equipo.", false);
+        return;
+    }
+
+    liveParticipants = liveParticipants.filter(
+        item => Number(item.id_participante) !== participantId
+    );
+    renderWaitingRoom();
+    syncActiveGameSummary();
+    setLiveMessage(payload.message || "Equipo eliminado correctamente.", true);
 });
 
 judgeSocket.on("participante_conectado", payload => {
     const participant = payload?.participant || payload;
+
+    if (
+        participant?.id_partida
+        && liveState?.partida?.id_partida
+        && Number(participant.id_partida) !== Number(liveState.partida.id_partida)
+    ) {
+        return;
+    }
 
     liveParticipants = upsertBy(
         liveParticipants,
@@ -710,6 +1369,8 @@ judgeSocket.on("participante_conectado", payload => {
         "codigo_participante"
     );
     renderParticipants(liveParticipants);
+    renderWaitingRoom();
+    syncActiveGameSummary();
 
     if (payload?.ranking) {
         renderRanking($("#judgeRanking"), payload.ranking);
@@ -723,6 +1384,8 @@ judgeSocket.on("participante_desconectado", payload => {
             : participant
     ));
     renderParticipants(liveParticipants);
+    renderWaitingRoom();
+    syncActiveGameSummary();
 
     if (payload?.ranking) {
         renderRanking($("#judgeRanking"), payload.ranking);
@@ -760,7 +1423,7 @@ judgeSocket.on("solicitud_palabra", payload => {
         );
     }
 
-    liveRequests = sortRequests(liveRequests);
+    liveRequests = activeRequests(liveRequests);
     renderRequests(liveRequests, liveState);
 });
 
@@ -776,7 +1439,7 @@ judgeSocket.on("palabra_otorgada", request => {
         request,
         "id_solicitud"
     );
-    liveRequests = sortRequests(liveRequests);
+    liveRequests = activeRequests(liveRequests);
     renderCompetitionStatus(liveState);
     renderRequests(liveRequests, liveState);
 });
@@ -797,33 +1460,20 @@ judgeSocket.on("respuesta_calificada", payload => {
             ? "Respuesta correcta. Esperando siguiente pregunta."
             : "Respuesta incorrecta. Puede otorgar la palabra al siguiente equipo o esperar nuevas solicitudes."
     };
-    if (!correct) {
-        liveRequests = liveRequests.filter(
-            item => item.id_solicitud !== request.id_solicitud
-        );
+    liveRequests = Array.isArray(payload.affected_requests)
+        ? activeRequests(filterRequestsForQuestion(payload.affected_requests))
+        : activeRequests(filterRequestsForQuestion(
+            liveRequests.filter(item => item.id_solicitud !== request.id_solicitud)
+        ));
+    if (payload?.timer) {
+        liveTimerRemaining = normalizedTimerValue(payload.timer);
+        liveState = {...liveState, timer: payload.timer};
+        renderTimer($("#judgeTimer"), payload.timer, $("#judgeTimerProgress"));
+        handleTimerSound(payload.timer, "judge");
     }
-
-    (payload.affected_requests || [request]).forEach(item => {
-        if (
-            liveQuestionId
-            && String(item.id_partida_pregunta) !== String(liveQuestionId)
-        ) {
-            return;
-        }
-
-        if (!correct && item.id_solicitud === request.id_solicitud) {
-            return;
-        }
-
-        liveRequests = upsertBy(
-            liveRequests,
-            item,
-            "id_solicitud"
-        );
-    });
-    liveRequests = sortRequests(filterRequestsForQuestion(liveRequests));
     renderCompetitionStatus(liveState);
     renderRequests(liveRequests, liveState);
+    updateLiveActionButtons();
 });
 
 judgeSocket.on("actualizar_puntajes", ranking => {
@@ -836,25 +1486,48 @@ judgeSocket.on("mostrar_podio", ranking => {
     playSound("finish");
     liveState = {
         ...liveState,
+        partida: {
+            ...(liveState.partida || {}),
+            estado: GAME_STATUS_FINISHED
+        },
         estado_competencia: "Competencia finalizada",
         mensaje_estado: "La competencia ha terminado."
     };
+    liveTransitionActive = false;
+    liveTimerRemaining = 0;
+    clearPendingLiveAction();
     renderCompetitionStatus(liveState);
     renderRanking($("#judgeRanking"), ranking);
     renderJudgeQuestion(null, "Competencia finalizada.");
+    renderJudgeLayout();
+    syncActiveGameSummary();
 });
 
 judgeSocket.on("actualizar_cronometro", timer => {
+    liveTimerRemaining = normalizedTimerValue(timer);
+    liveState = {...liveState, timer};
     renderTimer($("#judgeTimer"), timer, $("#judgeTimerProgress"));
     handleTimerSound(timer, "judge");
+    updateLiveActionButtons();
 });
 
 judgeSocket.on("estado_competencia", event => {
     if (event.contador === 5) {
         playSound("countdown");
     }
+    if (event.estado === "Cuenta regresiva") {
+        liveTransitionActive = true;
+        renderJudgeLayout();
+    }
+
+    liveState = {
+        ...liveState,
+        estado_competencia: event.estado,
+        mensaje_estado: event.mensaje
+    };
     renderCompetitionStatus(event);
     renderJudgeQuestion(null, event.contador ? `${event.mensaje}` : event.mensaje);
+    updateLiveActionButtons();
 });
 
 judgeSocket.on("mostrar_pregunta", question => {
@@ -862,6 +1535,18 @@ judgeSocket.on("mostrar_pregunta", question => {
         playSound("start");
     }
     resetTimerSound("judge");
+    liveTransitionActive = false;
+    liveState = {
+        ...liveState,
+        partida: {
+            ...(liveState.partida || {}),
+            estado: GAME_STATUS_IN_PROGRESS,
+            pregunta_actual: question?.numero_orden || liveState?.partida?.pregunta_actual
+        },
+        pregunta: question,
+        estado_competencia: "Pregunta en curso",
+        mensaje_estado: "Los equipos pueden pedir la palabra."
+    };
     liveQuestionId = question?.id_partida_pregunta || null;
     liveRequests = [];
     renderRequests(liveRequests, {
@@ -869,8 +1554,23 @@ judgeSocket.on("mostrar_pregunta", question => {
         estado_competencia: "Pregunta en curso"
     });
     renderJudgeQuestion(question, "Pregunta actual.");
+    renderJudgeLayout();
+    syncActiveGameSummary();
 });
 
-loadCatalogs().then(refreshAll);
+const initialTab = window.location.hash.replace("#", "");
+
+loadCatalogs()
+    .then(refreshAll)
+    .then(() => {
+        resetGameForm({clearMessage: false, generateCode: true});
+        if (["contenido", "partidas", "competencia", "historial"].includes(initialTab)) {
+            showDashboardTab(initialTab, false);
+        }
+    })
+    .catch(error => {
+        console.warn("No fue posible cargar completamente el dashboard.", error);
+        setMessage($("#partidaMessage"), "No fue posible cargar todos los datos. Actualiza la página e inténtalo de nuevo.", false);
+    });
 
 
