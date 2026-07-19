@@ -1,335 +1,513 @@
-const participantSession = JSON.parse(localStorage.getItem("participantSession") || "{}");
-const socket = io({transports: ["websocket"]});
-const requestButton = document.getElementById("requestWord");
-const statusEl = document.getElementById("participantStatus");
-const questionText = document.getElementById("questionText");
-const questionImage = document.getElementById("questionImage");
-const rankingEl = document.getElementById("ranking");
-const finalActions = document.getElementById("finalActions");
-const teamScore = document.getElementById("teamScore");
-const podiumTitle = document.getElementById("podiumTitle");
-let hasRequestedForQuestion = false;
-let hasAnsweredForQuestion = false;
-let participantQuestionId = null;
-let participantPaused = false;
+const storedParticipantSession = localStorage.getItem("participantSession");
+let participantSession = {};
 
-document.getElementById("teamName").textContent = participantSession.nombre_equipo || "Equipo";
-document.getElementById("roomCode").textContent = participantSession.codigo_partida || "";
-
-socket.on("connect", () => {
-    if (participantSession.codigo_partida) {
-        socket.emit("participante_reconectar", participantSession);
-    }
-});
-
-function renderParticipantTimer(timer, duration = null) {
-    renderTimer(
-        document.getElementById("timer"),
-        {
-            ...(timer || {}),
-            duration
-        },
-        document.getElementById("participantTimerProgress")
-    );
-    handleTimerSound(timer, "participant");
+try {
+    participantSession = JSON.parse(storedParticipantSession || "{}");
+} catch (error) {
+    participantSession = {};
 }
 
-function setParticipantStatus(status, message) {
-    statusEl.textContent = status || "Sala abierta";
-    questionText.textContent = message || "Esperando que el juez inicie la competencia.";
+if (!participantSession.codigo_partida || !participantSession.codigo_participante) {
+    localStorage.removeItem("participantSession");
+    window.location.replace("/participante/");
+} else {
+    initializeParticipantRoom(participantSession);
 }
 
-function showTurnMessage(title, message) {
-    statusEl.textContent = title;
-    questionText.textContent = message;
-    requestButton.disabled = true;
-}
+function initializeParticipantRoom(sessionData) {
+    const helpers = ParticipantRoomHelpers;
+    const socket = io({transports: ["websocket"]});
+    const requestButton = document.getElementById("requestWord");
+    const statusEl = document.getElementById("participantStatus");
+    const stateMessageEl = document.getElementById("participantStateMessage");
+    const questionText = document.getElementById("questionText");
+    const questionImage = document.getElementById("questionImage");
+    const expandQuestionImage = document.getElementById("expandQuestionImage");
+    const questionContent = document.getElementById("participantQuestionContent");
+    const participantStatePanel = document.getElementById("participantStatePanel");
+    const pausedPanel = document.getElementById("participantPausedPanel");
+    const rankingEl = document.getElementById("ranking");
+    const finalActions = document.getElementById("finalActions");
+    const teamScore = document.getElementById("teamScore");
+    const podiumTitle = document.getElementById("podiumTitle");
+    const connectionStatusEl = document.getElementById("connectionStatus");
+    const participantNotice = document.getElementById("participantNotice");
+    const connectAnotherRoom = document.getElementById("connectAnotherRoom");
+    const modalElement = document.getElementById("participantImageModal");
+    const modalImage = document.getElementById("participantImageModalContent");
+    const modalQuestionText = document.getElementById("participantImageModalLabel");
+    const participantImageModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    let hasRequestedForQuestion = false;
+    let hasAnsweredForQuestion = false;
+    let lastAnswerCorrect = null;
+    let participantQuestionId = null;
+    let participantPaused = false;
+    let participantTransitionBlocked = true;
+    let participantRequestStatus = "";
+    let currentParticipantQuestion = null;
+    let currentGameState = "";
+    let currentCompetitionState = "Sala abierta";
+    let currentCompetitionMessage = "Esperando que el juez inicie la competencia.";
+    let currentTimerExhausted = false;
+    let wordRequestInFlight = false;
+    let requestStateRebuildPending = false;
+    let currentPresentation = null;
+    let noticeTimer = null;
 
-function ownWordRequest(requests = []) {
-    return (requests || []).find(
-        item => item.codigo_participante === participantSession.codigo_participante
-    );
-}
+    document.getElementById("teamName").textContent = sessionData.nombre_equipo || "Equipo";
+    document.getElementById("roomCode").textContent = sessionData.codigo_partida || "";
 
-function showFinalPodium(rankingData) {
-    const ranking = rankingData?.ranking || [];
-    const own = ranking.find(
-        item => item.participant_code === participantSession.codigo_participante
-    );
-
-    leaveParticipantPaused();
-    document.querySelector(".participant-view")?.classList.add("podium-mode");
-    requestButton.classList.add("d-none");
-    requestButton.disabled = true;
-    finalActions.classList.remove("d-none");
-    podiumTitle.classList.remove("d-none");
-    teamScore.textContent = own
-        ? `Puntaje de tu equipo: ${own.puntaje} pts`
-        : "Puntaje final disponible en el marcador.";
-    renderAnimatedPodium(rankingEl, rankingData);
-}
-
-function renderParticipantQuestion(question) {
-    questionText.textContent = question?.enunciado || "Pregunta actual";
-
-    if (question?.imagen) {
-        questionImage.src = question.imagen;
-        questionImage.classList.remove("d-none");
-    } else {
-        questionImage.removeAttribute("src");
-        questionImage.classList.add("d-none");
-    }
-}
-
-function clearParticipantQuestion() {
-    questionImage.removeAttribute("src");
-    questionImage.classList.add("d-none");
-}
-
-function syncParticipantQuestion(question, ownRequest = null) {
-    const questionId = question?.id_partida_pregunta || null;
-
-    if (questionId && String(questionId) !== String(participantQuestionId || "")) {
-        participantQuestionId = questionId;
-        hasRequestedForQuestion = false;
-        hasAnsweredForQuestion = false;
-    }
-
-    if (ownRequest) {
-        hasRequestedForQuestion = true;
-        hasAnsweredForQuestion = ["CORRECTA", "INCORRECTA"].includes(ownRequest.estado);
-    }
-}
-
-function showParticipantPaused() {
-    participantPaused = true;
-    document.querySelector(".participant-view")?.classList.add("is-paused");
-    requestButton.disabled = true;
-    requestButton.classList.add("d-none");
-    finalActions.classList.add("d-none");
-    podiumTitle.classList.add("d-none");
-    clearParticipantQuestion();
-    setParticipantStatus(
-        "PARTIDA PAUSADA",
-        "Espera a que el juez reanude la partida."
-    );
-}
-
-function leaveParticipantPaused() {
-    participantPaused = false;
-    document.querySelector(".participant-view")?.classList.remove("is-paused");
-}
-
-requestButton.addEventListener("click", () => {
-    if (participantPaused) {
-        return;
-    }
-
-    playSound("request");
-    hasRequestedForQuestion = true;
-    requestButton.disabled = true;
-    statusEl.textContent = "Solicitud enviada";
-    socket.emit("pedir_palabra", participantSession);
-});
-
-socket.on("estado_sala", state => {
-    renderParticipantTimer(state.timer, state.partida?.tiempo_por_pregunta);
-    renderRanking(rankingEl, state.ranking);
-    const ownRequest = ownWordRequest(state.solicitudes);
-    syncParticipantQuestion(state.pregunta, ownRequest);
-
-    if (state.partida?.estado === "PAUSADA") {
-        showParticipantPaused();
-        return;
-    }
-
-    leaveParticipantPaused();
-    requestButton.classList.remove("d-none");
-
-    if (state.estado_competencia === "Esperando respuesta") {
-        statusEl.textContent = state.estado_competencia;
-        if (state.pregunta) {
-            renderParticipantQuestion(state.pregunta);
-        } else {
-            setParticipantStatus(
-                state.estado_competencia,
-                state.mensaje_estado || "Un equipo tiene la palabra."
+    const connectionController = helpers.bindConnectionStatus(socket, {
+        onStatus(message, tone) {
+            connectionStatusEl.textContent = message;
+            connectionStatusEl.classList.remove(
+                "is-connected",
+                "is-reconnecting",
+                "is-recovered"
             );
+            connectionStatusEl.classList.add(`is-${tone}`);
+        }
+    });
+
+    const joinMessage = sessionStorage.getItem("participantJoinMessage");
+
+    if (joinMessage) {
+        participantNotice.textContent = joinMessage;
+        participantNotice.classList.remove("d-none");
+        sessionStorage.removeItem("participantJoinMessage");
+        noticeTimer = window.setTimeout(() => {
+            participantNotice.classList.add("d-none");
+            noticeTimer = null;
+        }, 4000);
+    }
+
+    socket.on("connect", () => {
+        socket.emit("participante_reconectar", sessionData);
+    });
+
+    function renderParticipantTimer(timer, duration = null) {
+        renderTimer(
+            document.getElementById("timer"),
+            {
+                ...(timer || {}),
+                duration
+            },
+            document.getElementById("participantTimerProgress")
+        );
+        handleTimerSound(timer, "participant");
+    }
+
+    function setParticipantState(status, message) {
+        statusEl.textContent = status || "Sala abierta";
+        stateMessageEl.textContent = message || "Esperando que el juez inicie la competencia.";
+    }
+
+    function ownWordRequest(requests = []) {
+        return (requests || []).find(
+            item => item.codigo_participante === sessionData.codigo_participante
+        );
+    }
+
+    function closeParticipantQuestionModal() {
+        participantImageModal.hide();
+        modalImage.removeAttribute("src");
+        modalQuestionText.textContent = "Pregunta actual";
+    }
+
+    function renderParticipantQuestion(question) {
+        currentParticipantQuestion = question || null;
+
+        if (!question) {
+            questionText.textContent = "Esperando la siguiente pregunta.";
+            questionImage.removeAttribute("src");
+            expandQuestionImage.classList.add("d-none");
+            return;
         }
 
-        if (ownRequest?.estado === "EN_TURNO") {
+        questionText.textContent = question.enunciado || "Pregunta actual";
+
+        if (question.imagen) {
+            questionImage.src = question.imagen;
+            expandQuestionImage.classList.remove("d-none");
+        } else {
+            questionImage.removeAttribute("src");
+            expandQuestionImage.classList.add("d-none");
+        }
+    }
+
+    function syncParticipantQuestion(question, ownRequest = null) {
+        const transition = helpers.participantQuestionTransition(
+            participantQuestionId,
+            question
+        );
+
+        if (transition.changed) {
+            closeParticipantQuestionModal();
+        }
+
+        if (transition.isNewQuestion) {
+            participantQuestionId = transition.nextQuestionId;
+            hasRequestedForQuestion = false;
+            hasAnsweredForQuestion = false;
+            lastAnswerCorrect = null;
+            participantRequestStatus = "";
+            wordRequestInFlight = false;
+        }
+
+        if (question) {
+            renderParticipantQuestion(question);
+        }
+
+        if (ownRequest) {
+            participantRequestStatus = ownRequest.estado || "";
             hasRequestedForQuestion = true;
-            showTurnMessage("Tienen la palabra", "USTEDES TIENEN LA PALABRA");
-        } else if (ownRequest || hasRequestedForQuestion || hasAnsweredForQuestion) {
-            requestButton.disabled = true;
-            statusEl.textContent = "Esperando turno";
-        } else {
-            requestButton.disabled = false;
-            statusEl.textContent = "Otro equipo esta respondiendo";
-        }
-    } else if (
-        state.partida?.estado === "EN_CURSO"
-        && state.pregunta
-        && state.estado_competencia === "Pregunta en curso"
-    ) {
-        requestButton.disabled = hasRequestedForQuestion || hasAnsweredForQuestion;
-        statusEl.textContent = "Pregunta en curso";
-        renderParticipantQuestion(state.pregunta);
-    } else if (state.partida?.estado === "EN_CURSO") {
-        requestButton.disabled = true;
-        statusEl.textContent = state.estado_competencia || "Esperando siguiente pregunta";
-        if (state.pregunta) {
-            renderParticipantQuestion(state.pregunta);
-        } else {
-            questionImage.classList.add("d-none");
-            setParticipantStatus(
-                state.estado_competencia,
-                state.mensaje_estado || "Esperando siguiente pregunta."
+            hasAnsweredForQuestion = ["CORRECTA", "INCORRECTA"].includes(
+                participantRequestStatus
             );
+
+            if (hasAnsweredForQuestion) {
+                lastAnswerCorrect = participantRequestStatus === "CORRECTA";
+            }
         }
-    } else if (state.partida?.estado === "FINALIZADA") {
-        setParticipantStatus("Competencia finalizada", "La competencia ha terminado.");
-        showFinalPodium(state.ranking);
-    } else {
+    }
+
+    function updateParticipantPresentation() {
+        currentPresentation = helpers.participantPresentation({
+            question: currentParticipantQuestion,
+            gameState: currentGameState,
+            competitionState: currentCompetitionState,
+            competitionMessage: currentCompetitionMessage,
+            ownRequestStatus: participantRequestStatus,
+            hasRequested: hasRequestedForQuestion,
+            hasAnswered: hasAnsweredForQuestion,
+            lastAnswerCorrect,
+            timerExhausted: currentTimerExhausted,
+            transitionBlocked: participantTransitionBlocked,
+            paused: participantPaused
+        });
+
+        questionContent.classList.toggle("d-none", !currentPresentation.showQuestion);
+        requestButton.disabled = !currentPresentation.requestEnabled;
+        setParticipantState(currentPresentation.status, currentPresentation.message);
+        return currentPresentation;
+    }
+
+    function showParticipantPaused() {
+        participantPaused = true;
+        participantTransitionBlocked = true;
+        document.querySelector(".participant-view")?.classList.add("is-paused");
+        pausedPanel.classList.remove("d-none");
+        questionContent.classList.add("d-none");
+        participantStatePanel.classList.add("d-none");
         requestButton.disabled = true;
-        requestButton.classList.remove("d-none");
+        requestButton.classList.add("d-none");
         finalActions.classList.add("d-none");
         podiumTitle.classList.add("d-none");
-        questionImage.classList.add("d-none");
-        setParticipantStatus(
-            state.estado_competencia,
-            state.mensaje_estado || "Esperando que el juez inicie la competencia."
+        closeParticipantQuestionModal();
+        questionImage.removeAttribute("src");
+    }
+
+    function leaveParticipantPaused() {
+        participantPaused = false;
+        document.querySelector(".participant-view")?.classList.remove("is-paused");
+        pausedPanel.classList.add("d-none");
+        participantStatePanel.classList.remove("d-none");
+        requestButton.classList.remove("d-none");
+    }
+
+    function showFinalPodium(rankingData) {
+        const ranking = rankingData?.ranking || [];
+        const own = ranking.find(
+            item => item.participant_code === sessionData.codigo_participante
         );
-    }
-});
 
-socket.on("mostrar_pregunta", question => {
-    if (participantPaused) {
-        return;
-    }
-
-    if (Number(question?.numero_orden) === 1) {
-        playSound("start");
-    }
-    resetTimerSound("participant");
-    document.querySelector(".participant-view")?.classList.remove("podium-mode");
-    syncParticipantQuestion(question);
-    renderParticipantQuestion(question);
-    statusEl.textContent = "Pregunta en curso";
-    requestButton.classList.remove("d-none");
-    finalActions.classList.add("d-none");
-    podiumTitle.classList.add("d-none");
-    requestButton.disabled = false;
-});
-
-socket.on("estado_competencia", event => {
-    if (participantPaused && event.estado !== "Competencia finalizada") {
-        return;
-    }
-
-    if (event.contador === 5) {
-        playSound("countdown");
-    }
-
-    if (event.estado === "Pregunta en curso") {
-        requestButton.disabled = hasRequestedForQuestion || hasAnsweredForQuestion;
-        statusEl.textContent = "Pregunta en curso";
-        questionText.textContent = event.mensaje || "Los equipos pueden pedir la palabra.";
-        return;
-    }
-
-    requestButton.disabled = true;
-    setParticipantStatus(event.estado, event.mensaje);
-});
-
-socket.on("actualizar_cronometro", timer => {
-    if (participantPaused) {
-        return;
-    }
-
-    renderParticipantTimer(timer);
-    if (timer?.exhausted) {
+        closeParticipantQuestionModal();
+        leaveParticipantPaused();
+        currentGameState = "FINALIZADA";
+        participantTransitionBlocked = true;
+        document.querySelector(".participant-view")?.classList.add("podium-mode");
+        requestButton.classList.add("d-none");
         requestButton.disabled = true;
-        statusEl.textContent = "Tiempo agotado";
+        finalActions.classList.remove("d-none");
+        podiumTitle.classList.remove("d-none");
+        teamScore.textContent = own
+            ? `Puntaje de tu equipo: ${own.puntaje} pts`
+            : "Puntaje final disponible en el marcador.";
+        renderAnimatedPodium(rankingEl, rankingData);
     }
-});
 
-socket.on("habilitar_respuesta", request => {
-    if (participantPaused) {
-        return;
+    function resetFinalView() {
+        document.querySelector(".participant-view")?.classList.remove("podium-mode");
+        finalActions.classList.add("d-none");
+        podiumTitle.classList.add("d-none");
     }
 
-    if (request.codigo_participante === participantSession.codigo_participante) {
+    function sendWordRequest() {
+        if (
+                participantPaused
+                || participantTransitionBlocked
+                || wordRequestInFlight
+                || hasRequestedForQuestion
+                || hasAnsweredForQuestion
+                || requestButton.disabled
+                || currentPresentation?.requestEnabled !== true
+        ) {
+            return false;
+        }
+
+        playSound("request");
+        wordRequestInFlight = true;
+        hasRequestedForQuestion = true;
+        participantRequestStatus = "";
+        updateParticipantPresentation();
+        socket.emit("pedir_palabra", sessionData);
+        return true;
+    }
+
+    requestButton.addEventListener("click", sendWordRequest);
+
+    document.addEventListener("keydown", event => {
+        const modalOpen = Boolean(document.querySelector(".modal.show"));
+        const useShortcut = helpers.shouldUseRequestShortcut(event, {
+            requestAvailable: currentPresentation?.requestEnabled === true,
+            requestDisabled: requestButton.disabled,
+            paused: participantPaused,
+            hasActiveRequest: (
+                wordRequestInFlight
+                || hasRequestedForQuestion
+                || hasAnsweredForQuestion
+                || Boolean(participantRequestStatus)
+            ),
+            transitionBlocked: participantTransitionBlocked,
+            modalOpen
+        });
+
+        if (!useShortcut) {
+            return;
+        }
+
+        if (event.key === " " || event.key === "Spacebar" || event.code === "Space") {
+            event.preventDefault();
+        }
+
+        sendWordRequest();
+    });
+
+    expandQuestionImage.addEventListener("click", () => {
+        const modalContent = helpers.participantQuestionModalContent(
+            currentParticipantQuestion
+        );
+
+        if (participantPaused || !modalContent.image) {
+            return;
+        }
+
+        modalQuestionText.textContent = modalContent.text;
+        modalImage.src = modalContent.image;
+        participantImageModal.show();
+    });
+
+    connectAnotherRoom.addEventListener("click", () => {
+        connectionController.markLeaving();
+
+        if (noticeTimer !== null) {
+            window.clearTimeout(noticeTimer);
+            noticeTimer = null;
+        }
+
+        helpers.clearParticipantBrowserState(localStorage, sessionStorage);
+        socket.disconnect();
+        window.location.replace("/participante/");
+    });
+
+    socket.on("estado_sala", state => {
+        currentGameState = state.partida?.estado || "";
+        currentCompetitionState = state.estado_competencia || "Sala abierta";
+        currentCompetitionMessage = state.mensaje_estado || "";
+        currentTimerExhausted = state.timer?.exhausted === true;
+        renderParticipantTimer(state.timer, state.partida?.tiempo_por_pregunta);
+        renderRanking(rankingEl, state.ranking);
+
+        if (currentGameState === "PAUSADA") {
+            showParticipantPaused();
+            return;
+        }
+
+        leaveParticipantPaused();
+
+        if (currentGameState === "FINALIZADA") {
+            showFinalPodium(state.ranking);
+            return;
+        }
+
+        resetFinalView();
+        const ownRequest = ownWordRequest(state.solicitudes);
+        syncParticipantQuestion(state.pregunta, ownRequest);
+
+        if (requestStateRebuildPending) {
+            requestStateRebuildPending = false;
+
+            if (!ownRequest) {
+                hasRequestedForQuestion = false;
+                hasAnsweredForQuestion = false;
+                participantRequestStatus = "";
+            }
+        }
+
+        participantTransitionBlocked = !state.pregunta;
+        updateParticipantPresentation();
+    });
+
+    socket.on("mostrar_pregunta", question => {
+        if (participantPaused) {
+            return;
+        }
+
+        if (Number(question?.numero_orden) === 1) {
+            playSound("start");
+        }
+
+        resetTimerSound("participant");
+        resetFinalView();
+        currentGameState = "EN_CURSO";
+        currentCompetitionState = "Pregunta en curso";
+        currentCompetitionMessage = "Los equipos pueden pedir la palabra.";
+        currentTimerExhausted = false;
+        participantTransitionBlocked = false;
+        syncParticipantQuestion(question);
+        updateParticipantPresentation();
+    });
+
+    socket.on("estado_competencia", event => {
+        if (participantPaused && event.estado !== "Competencia finalizada") {
+            return;
+        }
+
+        if (event.contador === 5) {
+            playSound("countdown");
+        }
+
+        currentCompetitionState = event.estado || currentCompetitionState;
+        currentCompetitionMessage = event.mensaje || currentCompetitionMessage;
+        participantTransitionBlocked = ![
+            "Pregunta en curso",
+            "Esperando respuesta"
+        ].includes(currentCompetitionState);
+
+        if (currentCompetitionState === "Competencia finalizada") {
+            currentGameState = "FINALIZADA";
+            requestButton.disabled = true;
+            closeParticipantQuestionModal();
+        }
+
+        updateParticipantPresentation();
+    });
+
+    socket.on("actualizar_cronometro", timer => {
+        if (participantPaused) {
+            return;
+        }
+
+        renderParticipantTimer(timer);
+        currentTimerExhausted = timer?.exhausted === true;
+        updateParticipantPresentation();
+    });
+
+    socket.on("habilitar_respuesta", request => {
+        if (
+                participantPaused
+                || request.codigo_participante !== sessionData.codigo_participante
+        ) {
+            return;
+        }
+
         playSound("turn");
+        participantRequestStatus = "EN_TURNO";
         hasRequestedForQuestion = true;
-        showTurnMessage(
-            "Tienen la palabra",
-            "USTEDES TIENEN LA PALABRA"
-        );
-    }
-});
+        wordRequestInFlight = false;
+        updateParticipantPresentation();
+    });
 
-socket.on("estado_palabra", request => {
-    if (participantPaused) {
-        return;
-    }
+    socket.on("estado_palabra", request => {
+        if (participantPaused) {
+            return;
+        }
 
-    playSound("turn");
-    if (request.codigo_participante === participantSession.codigo_participante) {
+        currentCompetitionState = "Esperando respuesta";
+        currentCompetitionMessage = "Un equipo tiene la palabra.";
+        participantTransitionBlocked = false;
+        playSound("turn");
+
+        if (request.codigo_participante === sessionData.codigo_participante) {
+            participantRequestStatus = "EN_TURNO";
+            hasRequestedForQuestion = true;
+            wordRequestInFlight = false;
+        }
+
+        updateParticipantPresentation();
+    });
+
+    socket.on("resultado_respuesta", payload => {
+        if (participantPaused) {
+            return;
+        }
+
+        const request = payload?.request;
+
+        if (!request || request.codigo_participante !== sessionData.codigo_participante) {
+            return;
+        }
+
+        const correct = request.estado === "CORRECTA";
+        playSound(correct ? "correct" : "incorrect");
+        participantRequestStatus = correct ? "CORRECTA" : "INCORRECTA";
         hasRequestedForQuestion = true;
-        showTurnMessage(
-            "Tienen la palabra",
-            "USTEDES TIENEN LA PALABRA"
+        hasAnsweredForQuestion = true;
+        lastAnswerCorrect = correct;
+        wordRequestInFlight = false;
+        updateParticipantPresentation();
+    });
+
+    socket.on("resultado_accion", payload => {
+        if (!wordRequestInFlight) {
+            return;
+        }
+
+        wordRequestInFlight = false;
+
+        if (payload?.success) {
+            requestStateRebuildPending = false;
+            participantRequestStatus = payload.data?.request?.estado || "EN_COLA";
+            hasRequestedForQuestion = true;
+            updateParticipantPresentation();
+            return;
+        }
+
+        requestStateRebuildPending = true;
+        participantTransitionBlocked = true;
+        updateParticipantPresentation();
+        setParticipantState(
+            "No se pudo enviar la solicitud",
+            payload?.message || "Inténtalo nuevamente cuando el botón esté disponible."
         );
-        return;
-    }
+        socket.emit("participante_reconectar", sessionData);
+    });
 
-    statusEl.textContent = hasRequestedForQuestion
-        ? "Esperando turno"
-        : "Otro equipo esta respondiendo";
-    questionText.textContent = hasAnsweredForQuestion
-        ? questionText.textContent
-        : "OTRO EQUIPO ESTA RESPONDIENDO. Puedes pedir la palabra si aun no estas en cola.";
-    requestButton.disabled = hasRequestedForQuestion || hasAnsweredForQuestion;
-});
+    socket.on("actualizar_puntajes", ranking => {
+        renderRanking(rankingEl, ranking);
+    });
 
-socket.on("resultado_respuesta", payload => {
-    if (participantPaused) {
-        return;
-    }
+    socket.on("mostrar_podio", ranking => {
+        playSound("finish");
+        showFinalPodium(ranking);
+    });
 
-    const request = payload?.request;
-
-    if (!request || request.codigo_participante !== participantSession.codigo_participante) {
-        return;
-    }
-
-    const correct = request.estado === "CORRECTA";
-    playSound(correct ? "correct" : "incorrect");
-    hasRequestedForQuestion = true;
-    hasAnsweredForQuestion = true;
-    statusEl.textContent = correct ? "Respuesta correcta" : "Respuesta incorrecta";
-    questionText.textContent = correct
-        ? "Puntaje actualizado. Esperando siguiente pregunta."
-        : "Esperando siguiente pregunta.";
-    requestButton.disabled = true;
-});
-
-socket.on("actualizar_puntajes", ranking => {
-    renderRanking(rankingEl, ranking);
-});
-
-socket.on("mostrar_podio", ranking => {
-    playSound("finish");
-    questionText.textContent = "Competencia finalizada";
-    statusEl.textContent = "Podio final";
-    showFinalPodium(ranking);
-});
-
-socket.on("participante_eliminado", payload => {
-    localStorage.removeItem("participantSession");
-    const message = payload?.message || "El juez eliminó este equipo de la sala de espera.";
-    sessionStorage.setItem("participantRemovalMessage", message);
-    socket.disconnect();
-    window.location.replace("/participante/?equipo_eliminado=1");
-});
+    socket.on("participante_eliminado", payload => {
+        connectionController.markLeaving();
+        helpers.clearParticipantBrowserState(localStorage, sessionStorage);
+        const message = payload?.message || "El juez eliminó este equipo de la sala de espera.";
+        sessionStorage.setItem("participantRemovalMessage", message);
+        socket.disconnect();
+        window.location.replace("/participante/?equipo_eliminado=1");
+    });
+}

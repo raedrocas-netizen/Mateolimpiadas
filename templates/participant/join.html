@@ -4,16 +4,23 @@
 <main class="auth-screen">
     <form id="joinForm" class="auth-card">
         <h1>Participante</h1>
-        <label class="form-label">Nombre del equipo</label>
-        <input class="form-control" name="nombre_equipo" required>
-        <label class="form-label mt-3">Integrantes</label>
-        <textarea class="form-control" name="integrantes" rows="3" required></textarea>
-        <label class="form-label mt-3">Sede</label>
+        <p class="text-secondary">Ingresa el código y tu sede. Si el equipo ya existe, volverás directamente a la competencia.</p>
+        <label class="form-label" for="codigoPartida">Código de sala</label>
+        <input id="codigoPartida" class="form-control code-input" name="codigo_partida" autocomplete="off" required>
+        <label class="form-label mt-3" for="sede">Sede</label>
         <select class="form-select" name="sede" id="sede" required></select>
-        <label class="form-label mt-3">Código de sala</label>
-        <input class="form-control code-input" name="codigo_partida" required>
-        <button class="btn btn-primary w-100 mt-4">Unirse</button>
-        <div id="joinMessage" class="small-message mt-3"></div>
+
+        <div class="first-join-fields mt-4" aria-labelledby="firstJoinTitle">
+            <div id="firstJoinTitle" class="first-join-title">Solo para el primer ingreso</div>
+            <p class="small text-secondary mb-3">Si tu sede aún no está registrada en esta sala, completa ambos campos.</p>
+            <label class="form-label" for="teamNameInput">Nombre del equipo</label>
+            <input id="teamNameInput" class="form-control" name="nombre_equipo" autocomplete="organization">
+            <label class="form-label mt-3" for="membersInput">Integrantes</label>
+            <textarea id="membersInput" class="form-control" name="integrantes" rows="3"></textarea>
+        </div>
+
+        <button id="joinButton" class="btn btn-primary w-100 mt-4">Conectarse</button>
+        <div id="joinMessage" class="small-message mt-3" role="status" aria-live="polite"></div>
     </form>
 </main>
 {% endblock %}

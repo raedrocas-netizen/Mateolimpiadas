@@ -1,0 +1,4 @@
+# Preserve pinned third-party artifacts byte for byte across platforms.
+/static/vendor/bootstrap/css/bootstrap.min.css -text
+/static/vendor/bootstrap/js/bootstrap.bundle.min.js -text
+/static/vendor/socket.io/socket.io.min.js -text

@@ -3,9 +3,10 @@
 {% block body %}
 <main class="competition-shell participant-view">
     <section class="topbar">
-        <div>
+        <div class="participant-identity">
             <strong id="teamName">Equipo</strong>
             <span id="roomCode" class="badge text-bg-light"></span>
+            <span id="connectionStatus" class="connection-status" role="status" aria-live="polite">Conectando...</span>
         </div>
         <div class="timer-stack">
             <div id="timer" class="timer">--</div>
@@ -16,29 +17,68 @@
     </section>
 
     <section class="question-band">
-        <div class="status-pill" id="participantStatus">Sala abierta</div>
-        <h1 id="questionText">Esperando que el juez inicie la competencia.</h1>
-        <img id="questionImage" class="question-image d-none" alt="Imagen de pregunta">
-        <button id="requestWord" class="btn btn-warning request-button" disabled>PEDIR PALABRA</button>
-        <div id="finalActions" class="final-actions d-none">
-            <div id="teamScore" class="score-pill"></div>
-            <div class="d-flex flex-wrap justify-content-center gap-2">
-                <a href="/" class="btn btn-primary">Volver al inicio</a>
-                <a href="/participante/" class="btn btn-outline-primary">Ingresar a otra sala</a>
-            </div>
+        <div id="participantNotice" class="participant-notice d-none" role="status" aria-live="polite"></div>
+
+        <div id="participantPausedPanel" class="participant-paused-panel d-none">
+            <div class="status-pill">PARTIDA PAUSADA</div>
+            <h1>Espera a que el juez reanude la partida.</h1>
         </div>
+
+        <div id="participantQuestionContent" class="participant-question-content">
+            <div class="question-eyebrow">Pregunta actual</div>
+            <h1 id="questionText">Esperando que el juez inicie la competencia.</h1>
+            <button id="expandQuestionImage" class="question-image-control d-none" type="button" aria-label="Ampliar imagen de pregunta">
+                <img id="questionImage" class="question-image" alt="Imagen de pregunta">
+                <span>Ampliar imagen</span>
+            </button>
+        </div>
+
+        <div id="participantStatePanel" class="participant-state-panel" role="status" aria-live="polite">
+            <div class="status-pill" id="participantStatus">Sala abierta</div>
+            <p id="participantStateMessage">Esperando que el juez inicie la competencia.</p>
+        </div>
+
+        <button id="requestWord" class="btn btn-warning request-button" type="button" disabled>
+            PEDIR PALABRA
+            <span class="request-shortcut-hint">Espacio o Enter</span>
+        </button>
     </section>
 
     <section class="ranking-panel">
         <h2>Marcador</h2>
         <div id="podiumTitle" class="text-secondary mb-2 d-none">Podio final</div>
         <div id="ranking"></div>
+        <div id="finalActions" class="final-actions d-none">
+            <div id="teamScore" class="score-pill"></div>
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+                <button id="connectAnotherRoom" class="btn btn-primary" type="button">Conectarse a otra sala</button>
+                <a href="/" class="btn btn-outline-primary">Volver al inicio</a>
+            </div>
+        </div>
     </section>
 </main>
+
+<div class="modal fade question-image-modal" id="participantImageModal" tabindex="-1" aria-labelledby="participantImageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header align-items-start">
+                <h2 class="modal-title fs-5 text-break flex-grow-1" id="participantImageModalLabel">Pregunta actual</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar imagen ampliada"></button>
+            </div>
+            <div class="modal-body">
+                <img id="participantImageModalContent" class="question-image-modal-full" alt="Imagen de pregunta ampliada">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/live_common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/participant_room_helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='js/participant_room.js') }}"></script>
 {% endblock %}
 

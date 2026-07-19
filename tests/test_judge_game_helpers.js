@@ -2,6 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+    activeRoomCode,
+    activeRoomName,
     activeQuestionnaires,
     activeWordRequests,
     competitionControlState,
@@ -302,6 +304,23 @@ test("presenta la acción principal según el estado", () => {
     assert.equal(gameActionLabel("EN_CURSO"), "Volver a competencia");
     assert.equal(gameActionLabel("PAUSADA"), "Volver a competencia");
     assert.equal(gameActionLabel("FINALIZADA"), "Ver resultados");
+});
+
+test("obtiene el código visible únicamente de la sala activa", () => {
+    for (const estado of ["ESPERANDO", "EN_CURSO", "PAUSADA"]) {
+        assert.equal(activeRoomCode({codigo_partida: " abc123 ", estado}), "ABC123");
+    }
+
+    assert.equal(activeRoomCode({codigo_partida: "xyz789", estado: "EN_CURSO"}), "XYZ789");
+    assert.equal(activeRoomCode({estado: "EN_CURSO"}), "");
+    assert.equal(activeRoomCode(null), "");
+});
+
+test("obtiene y limpia el nombre visible de la sala activa", () => {
+    assert.equal(activeRoomName({nombre: " Sala A "}), "Sala A");
+    assert.equal(activeRoomName({nombre: "Sala B"}), "Sala B");
+    assert.equal(activeRoomName({nombre: ""}), "Competencia");
+    assert.equal(activeRoomName(null), "Competencia");
 });
 
 test("centraliza la identidad visual de todas las sedes", () => {
