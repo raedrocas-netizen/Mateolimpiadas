@@ -247,3 +247,11 @@ socket.on("mostrar_podio", ranking => {
     statusEl.textContent = "Podio final";
     showFinalPodium(ranking);
 });
+
+socket.on("participante_eliminado", payload => {
+    localStorage.removeItem("participantSession");
+    const message = payload?.message || "El juez eliminó este equipo de la sala de espera.";
+    sessionStorage.setItem("participantRemovalMessage", message);
+    socket.disconnect();
+    window.location.replace("/participante/?equipo_eliminado=1");
+});

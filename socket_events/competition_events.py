@@ -1,7 +1,9 @@
 from flask import request, session
-from flask_socketio import emit, join_room
+from flask_socketio import emit, join_room, leave_room
+from threading import Lock
 from uuid import uuid4
 
+import helper.super_global as sg
 from helpers.serializers import (
     business_result_to_dict,
     game_question_to_dict,
@@ -9,11 +11,16 @@ from helpers.serializers import (
     serialize_any
 )
 from helpers.performance import measure, performance_operation, socket_event_performance
+from logical_business.business_result import BusinessResult
 from logical_business.partida_business import PartidaBusiness
 
 
 active_timer_tokens = {}
 connected_participants = {}
+connected_judges = {}
+active_game_actions = {}
+active_participant_deletions = set()
+action_state_lock = Lock()
 
 
 def game_room(game_code):
@@ -125,6 +132,61 @@ def emit_question_action_result(socketio, result, game_code):
 
 def stop_timer(game_code):
     active_timer_tokens[str(game_code).strip().upper()] = None
+
+
+def action_error(message):
+    result = BusinessResult()
+    result.set_message(message)
+    return result
+
+
+def begin_game_action(game_code, action):
+    normalized_code = str(game_code or "").strip().upper()
+
+    with action_state_lock:
+        if normalized_code in active_game_actions:
+            return False
+
+        active_game_actions[normalized_code] = action
+        return True
+
+
+def finish_game_action(game_code):
+    normalized_code = str(game_code or "").strip().upper()
+
+    with action_state_lock:
+        active_game_actions.pop(normalized_code, None)
+
+
+def has_active_game_action(game_code):
+    normalized_code = str(game_code or "").strip().upper()
+
+    with action_state_lock:
+        return normalized_code in active_game_actions
+
+
+def begin_participant_deletion(game_code, id_participante):
+    key = (
+        str(game_code or "").strip().upper(),
+        int(id_participante)
+    )
+
+    with action_state_lock:
+        if key in active_participant_deletions:
+            return False
+
+        active_participant_deletions.add(key)
+        return True
+
+
+def finish_participant_deletion(game_code, id_participante):
+    key = (
+        str(game_code or "").strip().upper(),
+        int(id_participante)
+    )
+
+    with action_state_lock:
+        active_participant_deletions.discard(key)
 
 
 def judge_authenticated():
@@ -388,51 +450,71 @@ def timer_loop(socketio, game_code, id_partida, initial_timer, token):
 
 
 def countdown_and_start(socketio, game_code, id_partida):
-    for number in range(5, 0, -1):
-        emit_live_event(
+    try:
+        for number in range(5, 0, -1):
+            emit_live_event(
+                socketio,
+                "estado_competencia",
+                {
+                    "estado": "Cuenta regresiva",
+                    "mensaje": f"La competencia inicia en {number}.",
+                    "contador": number
+                },
+                game_code
+            )
+            socketio.sleep(1)
+
+        with performance_operation("SocketIO iniciar_competencia publicar_pregunta", kind="socket"):
+            business = PartidaBusiness()
+            result = business.start_game(id_partida)
+
+            if result.get_success():
+                emit_question_start(socketio, business, game_code, id_partida, result.get_data())
+
+            emit_question_action_result(socketio, result, game_code)
+    except Exception as error:
+        print(f"Error al iniciar competencia en segundo plano: {error}")
+        emit_question_action_result(
             socketio,
-            "estado_competencia",
-            {
-                "estado": "Cuenta regresiva",
-                "mensaje": f"La competencia inicia en {number}.",
-                "contador": number
-            },
+            action_error("No fue posible iniciar la competencia. Inténtalo de nuevo."),
             game_code
         )
-        socketio.sleep(1)
-
-    with performance_operation("SocketIO iniciar_competencia publicar_pregunta", kind="socket"):
-        business = PartidaBusiness()
-        result = business.start_game(id_partida)
-
-        if result.get_success():
-            emit_question_start(socketio, business, game_code, id_partida, result.get_data())
-
-        emit_question_action_result(socketio, result, game_code)
+    finally:
+        finish_game_action(game_code)
 
 
 def countdown_and_advance(socketio, game_code, id_partida):
-    for number in range(5, 0, -1):
-        emit_live_event(
+    try:
+        for number in range(5, 0, -1):
+            emit_live_event(
+                socketio,
+                "estado_competencia",
+                {
+                    "estado": "Cuenta regresiva",
+                    "mensaje": f"Siguiente pregunta en {number}.",
+                    "contador": number
+                },
+                game_code
+            )
+            socketio.sleep(1)
+
+        with performance_operation("SocketIO siguiente_pregunta publicar_pregunta", kind="socket"):
+            business = PartidaBusiness()
+            result = business.advance_question(id_partida)
+
+            if result.get_success():
+                emit_question_start(socketio, business, game_code, id_partida, result.get_data())
+
+            emit_question_action_result(socketio, result, game_code)
+    except Exception as error:
+        print(f"Error al avanzar pregunta en segundo plano: {error}")
+        emit_question_action_result(
             socketio,
-            "estado_competencia",
-            {
-                "estado": "Cuenta regresiva",
-                "mensaje": f"Siguiente pregunta en {number}.",
-                "contador": number
-            },
+            action_error("No fue posible preparar la siguiente pregunta. Inténtalo de nuevo."),
             game_code
         )
-        socketio.sleep(1)
-
-    with performance_operation("SocketIO siguiente_pregunta publicar_pregunta", kind="socket"):
-        business = PartidaBusiness()
-        result = business.advance_question(id_partida)
-
-        if result.get_success():
-            emit_question_start(socketio, business, game_code, id_partida, result.get_data())
-
-        emit_question_action_result(socketio, result, game_code)
+    finally:
+        finish_game_action(game_code)
 
 
 def register_socket_events(socketio):
@@ -444,9 +526,25 @@ def register_socket_events(socketio):
             return
 
         game_code = str(data.get("codigo_partida", "")).strip().upper()
+        state = build_live_state(game_code, include_answer=True)
+
+        if state is None:
+            with measure("SocketIO"):
+                emit("error_sala", {
+                    "success": False,
+                    "message": "La sala no existe. Verifica el código e inténtalo de nuevo."
+                })
+            return
+
+        previous_game_code = connected_judges.get(request.sid)
+
+        if previous_game_code and previous_game_code != game_code:
+            leave_room(judge_room(previous_game_code))
+
+        connected_judges[request.sid] = game_code
         join_room(judge_room(game_code))
         with measure("SocketIO"):
-            emit("estado_sala", build_live_state(game_code, include_answer=True))
+            emit("estado_sala", state)
 
     @socketio.on("display_unirse")
     @socket_event_performance("display_unirse")
@@ -579,6 +677,7 @@ def register_socket_events(socketio):
     @socketio.on("disconnect")
     @socket_event_performance("disconnect")
     def participante_desconectar():
+        connected_judges.pop(request.sid, None)
         participant_ref = connected_participants.pop(request.sid, None)
 
         if not participant_ref:
@@ -640,12 +739,115 @@ def register_socket_events(socketio):
             emit("error_sala", {"message": "La partida no existe."})
             return
 
-        socketio.start_background_task(
-            countdown_and_start,
-            socketio,
-            partida.get_codigo_partida(),
-            partida.get_id_partida()
-        )
+        if partida.get_estado() != sg.GAME_STATUS_WAITING:
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "Solo puede iniciar una partida que se encuentre en sala de espera."
+                ))
+            )
+            return
+
+        if not begin_game_action(partida.get_codigo_partida(), "start"):
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "La competencia ya se está iniciando. Espera a que finalice la transición."
+                ))
+            )
+            return
+
+        try:
+            socketio.start_background_task(
+                countdown_and_start,
+                socketio,
+                partida.get_codigo_partida(),
+                partida.get_id_partida()
+            )
+        except Exception as error:
+            print(f"Error al crear la tarea de inicio: {error}")
+            finish_game_action(partida.get_codigo_partida())
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "No fue posible iniciar la competencia. Inténtalo de nuevo."
+                ))
+            )
+
+    @socketio.on("eliminar_participante_espera")
+    @socket_event_performance("eliminar_participante_espera")
+    def eliminar_participante_espera(data):
+        if reject_non_judge():
+            return
+
+        business = PartidaBusiness()
+        partida = business.get_by_code(data.get("codigo_partida"))
+
+        if partida is None:
+            emit("participante_eliminado_espera", {
+                "success": False,
+                "message": "La partida no existe.",
+                "id_participante": data.get("id_participante")
+            })
+            return
+
+        try:
+            participant_id = int(data.get("id_participante"))
+        except (TypeError, ValueError):
+            emit("participante_eliminado_espera", {
+                "success": False,
+                "message": "Selecciona un equipo válido para eliminar.",
+                "id_participante": data.get("id_participante")
+            })
+            return
+
+        game_code = partida.get_codigo_partida()
+
+        if not begin_participant_deletion(game_code, participant_id):
+            emit("participante_eliminado_espera", {
+                "success": False,
+                "message": "Este equipo ya se está eliminando.",
+                "id_participante": participant_id
+            })
+            return
+
+        try:
+            participant = next((
+                item
+                for item in business.get_participants(partida.get_id_partida())
+                if int(item.get("id_participante") or 0) == participant_id
+            ), None)
+            result = business.delete_waiting_participant(
+                partida.get_id_partida(),
+                participant_id
+            )
+            response = {
+                **business_result_to_dict(result),
+                "id_participante": participant_id
+            }
+            emit("participante_eliminado_espera", response)
+
+            if result.get_success():
+                if participant and participant.get("codigo_participante"):
+                    emit_to_participant(
+                        socketio,
+                        "participante_eliminado",
+                        {
+                            "message": "El juez eliminó este equipo de la sala de espera."
+                        },
+                        participant["codigo_participante"]
+                    )
+
+                emit_state(socketio, game_code)
+        except Exception as error:
+            print(f"Error al eliminar participante en espera: {error}")
+            emit("participante_eliminado_espera", {
+                "success": False,
+                "message": "No fue posible eliminar el equipo. Inténtalo de nuevo.",
+                "id_participante": participant_id
+            })
+        finally:
+            finish_participant_deletion(game_code, participant_id)
 
     @socketio.on("pedir_palabra")
     @socket_event_performance("pedir_palabra")
@@ -742,6 +944,7 @@ def register_socket_events(socketio):
             data_result = result.get_data() or {}
             request = data_result.get("request")
             ranking = data_result.get("ranking")
+            timer = data_result.get("timer")
             stop_timer(game_code)
 
             if request is not None:
@@ -770,6 +973,9 @@ def register_socket_events(socketio):
 
             if ranking is not None:
                 emit_live_event(socketio, "actualizar_puntajes", ranking, game_code)
+
+            if timer is not None:
+                emit_live_event(socketio, "actualizar_cronometro", timer, game_code)
 
     @socketio.on("respuesta_incorrecta")
     @socket_event_performance("respuesta_incorrecta")
@@ -874,12 +1080,112 @@ def register_socket_events(socketio):
             emit("error_sala", {"message": "La partida no existe."})
             return
 
-        socketio.start_background_task(
-            countdown_and_advance,
-            socketio,
-            partida.get_codigo_partida(),
-            partida.get_id_partida()
-        )
+        game_code = partida.get_codigo_partida()
+
+        if partida.get_estado() != sg.GAME_STATUS_IN_PROGRESS:
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "Solo puede cambiar de pregunta con la partida en curso."
+                ))
+            )
+            return
+
+        if has_active_game_action(game_code):
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "Ya hay una transición en curso. Espera a que finalice."
+                ))
+            )
+            return
+
+        timer = business.get_timer_status(partida.get_id_partida())
+        remaining = int((timer or {}).get("remaining") or 0)
+
+        if remaining > 0:
+            if not data.get("finalizar_tiempo_actual"):
+                emit(
+                    "resultado_accion",
+                    business_result_to_dict(action_error(
+                        "El tiempo de la pregunta todavía no ha finalizado."
+                    ))
+                )
+                return
+
+            if not begin_game_action(game_code, "finish_time"):
+                emit(
+                    "resultado_accion",
+                    business_result_to_dict(action_error(
+                        "El tiempo de la pregunta ya se está finalizando."
+                    ))
+                )
+                return
+
+            try:
+                stop_timer(game_code)
+                result = business.mark_time_expired(partida.get_id_partida())
+                emit_question_action_result(socketio, result, game_code)
+
+                if result.get_success():
+                    updated_timer = serialize_any(
+                        business.get_timer_status(partida.get_id_partida())
+                    )
+                    emit_live_event(
+                        socketio,
+                        "actualizar_cronometro",
+                        updated_timer,
+                        game_code
+                    )
+                    emit_state(socketio, game_code)
+            except Exception as error:
+                print(f"Error al finalizar tiempo de pregunta: {error}")
+                emit(
+                    "resultado_accion",
+                    business_result_to_dict(action_error(
+                        "No fue posible finalizar el tiempo actual. Inténtalo de nuevo."
+                    ))
+                )
+            finally:
+                finish_game_action(game_code)
+            return
+
+        total_questions = business.get_total_questions(partida.get_id_partida())
+
+        if partida.get_pregunta_actual() >= total_questions:
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "No hay más preguntas disponibles. Finaliza la partida para mostrar los resultados."
+                ))
+            )
+            return
+
+        if not begin_game_action(game_code, "next"):
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "La siguiente pregunta ya se está preparando."
+                ))
+            )
+            return
+
+        try:
+            socketio.start_background_task(
+                countdown_and_advance,
+                socketio,
+                game_code,
+                partida.get_id_partida()
+            )
+        except Exception as error:
+            print(f"Error al crear la tarea de siguiente pregunta: {error}")
+            finish_game_action(game_code)
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "No fue posible preparar la siguiente pregunta. Inténtalo de nuevo."
+                ))
+            )
 
     @socketio.on("finalizar_competencia")
     @socket_event_performance("finalizar_competencia")
@@ -894,34 +1200,55 @@ def register_socket_events(socketio):
             emit("error_sala", {"message": "La partida no existe."})
             return
 
-        result = business.finish_game(partida.get_id_partida())
-        with measure("SocketIO"):
-            emit("resultado_accion", business_result_to_dict(result))
+        game_code = partida.get_codigo_partida()
 
-        if result.get_success():
-            game_code = partida.get_codigo_partida()
-            stop_timer(game_code)
-            ranking = serialize_any(business.get_live_ranking(game_code))
-            emit_live_event(
-                socketio,
-                "estado_competencia",
-                {
-                    "estado": "Competencia finalizada",
-                    "mensaje": "La competencia ha terminado."
-                },
-                game_code
+        if not begin_game_action(game_code, "finish"):
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "Hay otra acción en curso. Espera antes de finalizar la partida."
+                ))
             )
+            return
 
-            if ranking is not None:
+        try:
+            result = business.finish_game(partida.get_id_partida())
+            with measure("SocketIO"):
+                emit("resultado_accion", business_result_to_dict(result))
+
+            if result.get_success():
+                stop_timer(game_code)
+                ranking = serialize_any(business.get_live_ranking(game_code))
                 emit_live_event(
                     socketio,
-                    "actualizar_puntajes",
-                    ranking,
+                    "estado_competencia",
+                    {
+                        "estado": "Competencia finalizada",
+                        "mensaje": "La competencia ha terminado."
+                    },
                     game_code
                 )
-                emit_live_event(
-                    socketio,
-                    "mostrar_podio",
-                    ranking,
-                    game_code
-                )
+
+                if ranking is not None:
+                    emit_live_event(
+                        socketio,
+                        "actualizar_puntajes",
+                        ranking,
+                        game_code
+                    )
+                    emit_live_event(
+                        socketio,
+                        "mostrar_podio",
+                        ranking,
+                        game_code
+                    )
+        except Exception as error:
+            print(f"Error al finalizar competencia: {error}")
+            emit(
+                "resultado_accion",
+                business_result_to_dict(action_error(
+                    "No fue posible finalizar la competencia. Inténtalo de nuevo."
+                ))
+            )
+        finally:
+            finish_game_action(game_code)

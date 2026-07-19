@@ -34,12 +34,13 @@ const questions = [
 ];
 
 test("normaliza mayúsculas y espacios innecesarios", () => {
-    assert.equal(normalizeSearch("  ÁLGEBRA   BÁSICA "), "álgebra básica");
+    assert.equal(normalizeSearch("  ÁLGEBRA   BÁSICA "), "algebra basica");
 });
 
 test("filtra cuestionarios por todos sus campos", () => {
-    assert.equal(filterQuestionnaires(questionnaires, "álgebra").length, 1);
-    assert.equal(filterQuestionnaires(questionnaires, "MATEMÁTICA").length, 1);
+    assert.equal(filterQuestionnaires(questionnaires, "algebra").length, 1);
+    assert.equal(filterQuestionnaires(questionnaires, "matematica").length, 1);
+    assert.equal(filterQuestionnaires(questionnaires, "BASICOS").length, 1);
     assert.equal(filterQuestionnaires(questionnaires, "primaria").length, 1);
     assert.equal(filterQuestionnaires(questionnaires, "borrador").length, 1);
 });
@@ -49,7 +50,7 @@ test("una búsqueda vacía restaura todos los cuestionarios", () => {
 });
 
 test("filtra preguntas por enunciado y respuesta", () => {
-    assert.equal(filterQuestions(questions, "dos más dos").length, 1);
+    assert.equal(filterQuestions(questions, "dos mas dos").length, 1);
     assert.equal(filterQuestions(questions, "CUATRO").length, 1);
     assert.equal(filterQuestions(questions, "ciudad de guatemala").length, 1);
 });

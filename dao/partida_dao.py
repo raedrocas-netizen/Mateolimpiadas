@@ -2686,6 +2686,21 @@ class PartidaDao:
                         )
                     )
 
+                self.dao.cursor.execute(
+                    """
+                    UPDATE solicitudes_palabra
+                    SET estado = ?
+                    WHERE id_partida_pregunta = ?
+                    AND estado IN (?, ?);
+                    """,
+                    (
+                        sg.WORD_REQUEST_STATUS_CANCELLED,
+                        current_question["id_partida_pregunta"],
+                        sg.WORD_REQUEST_STATUS_QUEUED,
+                        sg.WORD_REQUEST_STATUS_TURN
+                    )
+                )
+
             self.dao.cursor.execute(
                 """
                 UPDATE partidas

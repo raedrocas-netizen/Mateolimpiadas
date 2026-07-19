@@ -2,6 +2,13 @@ const joinSocket = io({transports: ["websocket"]});
 const joinForm = document.getElementById("joinForm");
 const sedeSelect = document.getElementById("sede");
 const joinMessage = document.getElementById("joinMessage");
+const removalMessage = sessionStorage.getItem("participantRemovalMessage");
+
+if (removalMessage) {
+    joinMessage.textContent = removalMessage;
+    joinMessage.classList.add("text-danger");
+    sessionStorage.removeItem("participantRemovalMessage");
+}
 
 apiFetch("/api/catalogos").then(data => {
     sedeSelect.innerHTML = data.sedes
@@ -11,6 +18,7 @@ apiFetch("/api/catalogos").then(data => {
 
 joinForm.addEventListener("submit", event => {
     event.preventDefault();
+    joinMessage.classList.remove("text-danger");
     const data = formJson(joinForm);
     data.codigo_partida = data.codigo_partida.toUpperCase();
     joinSocket.emit("participante_unirse", data);

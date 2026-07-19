@@ -8,6 +8,11 @@
     --green: #16a34a;
     --red: #dc2626;
     --gold: #f59e0b;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --radius-md: 8px;
+    --shadow-card: 0 16px 40px rgba(15, 23, 42, 0.08);
 }
 
 body {
@@ -133,12 +138,229 @@ body {
 
 .live-grid {
     display: grid;
-    grid-template-columns: minmax(280px, 0.8fr) minmax(320px, 1.2fr);
+    grid-template-columns: minmax(300px, 0.78fr) minmax(380px, 1.22fr);
     gap: 16px;
+    align-items: stretch;
 }
 
-.control-panel {
-    grid-row: span 2;
+.live-connect-panel {
+    width: min(680px, 100%);
+}
+
+.judge-control-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    min-width: 0;
+    align-self: stretch;
+}
+
+.judge-control-column > .tool-card:last-child {
+    flex: 1 1 auto;
+}
+
+.judge-control-column #wordRequests {
+    max-height: none;
+}
+
+.question-panel {
+    min-width: 0;
+}
+
+.judge-live-bottom {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-md);
+}
+
+.judge-waiting-room {
+    display: grid;
+    gap: var(--space-lg);
+}
+
+.waiting-room-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-lg);
+}
+
+.waiting-room-heading h2 {
+    margin: 3px 0 0;
+    font-size: clamp(1.35rem, 2vw, 2rem);
+}
+
+.eyebrow {
+    color: var(--blue);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.waiting-room-code {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+}
+
+.waiting-room-code > span {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.waiting-room-code strong {
+    color: var(--ink);
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    letter-spacing: 0.12em;
+    line-height: 1;
+}
+
+.waiting-room-summary {
+    border: 1px solid #bae6fd;
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    background: #f0f9ff;
+    color: #075985;
+}
+
+.waiting-room-summary strong {
+    font-size: 1.35rem;
+}
+
+.waiting-participant-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+}
+
+.waiting-participant-card {
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--site-accent, var(--blue));
+    border-left: 7px solid var(--site-accent, var(--blue));
+    border-radius: var(--radius-md);
+    padding: 14px;
+    background: linear-gradient(135deg, var(--site-tint, var(--soft)) 0%, var(--paper) 70%);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.waiting-participant-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.waiting-participant-site {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.waiting-participant-site strong {
+    color: var(--site-detail, var(--ink));
+}
+
+.site-identity-dot {
+    flex: 0 0 auto;
+    width: 0.72rem;
+    height: 0.72rem;
+    border: 2px solid var(--paper);
+    border-radius: 50%;
+    background: var(--site-accent, var(--blue));
+    box-shadow: 0 0 0 1px var(--site-detail, var(--ink));
+}
+
+.waiting-participant-card small {
+    display: block;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+.waiting-room-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.questionnaire-picker {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    padding: 0;
+}
+
+.questionnaire-picker legend {
+    float: none;
+    width: auto;
+    margin-bottom: 0;
+    font-size: inherit;
+}
+
+.questionnaire-checklist {
+    display: grid;
+    gap: var(--space-sm);
+    max-height: 280px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    background: #f8fafc;
+}
+
+.questionnaire-check-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 9px 10px;
+    background: var(--paper);
+    cursor: pointer;
+}
+
+.questionnaire-check-option:hover {
+    border-color: #bfdbfe;
+}
+
+.questionnaire-check-option input {
+    margin-top: 0.22rem;
+}
+
+.questionnaire-check-option strong,
+.questionnaire-check-option small {
+    display: block;
+}
+
+.questionnaire-check-option small {
+    color: var(--muted);
+}
+
+.questionnaire-picker-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.game-settings-row .form-label {
+    min-height: 2.5em;
+    display: flex;
+    align-items: end;
+}
+
+.dashboard-shell button:focus-visible,
+.dashboard-shell input:focus-visible,
+.dashboard-shell select:focus-visible,
+.questionnaire-check-option:focus-within {
+    outline: 3px solid rgba(37, 99, 235, 0.35);
+    outline-offset: 2px;
 }
 
 .timer {
@@ -1021,12 +1243,16 @@ body {
 
 @media (max-width: 575.98px) {
     .questionnaire-page .page-heading,
-    .dashboard-shell #cuestionariosList .list-row {
+    .dashboard-shell #cuestionariosList .list-row,
+    .dashboard-shell #partidasList .list-row,
+    .dashboard-shell #historyList .list-row {
         align-items: flex-start;
         flex-direction: column;
     }
 
-    .dashboard-shell #cuestionariosList .list-row-actions {
+    .dashboard-shell #cuestionariosList .list-row-actions,
+    .dashboard-shell #partidasList .list-row-actions,
+    .dashboard-shell #historyList .list-row-actions {
         justify-content: flex-start;
     }
 
@@ -1060,8 +1286,8 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .control-panel {
-        grid-row: auto;
+    .judge-live-bottom {
+        grid-template-columns: 1fr;
     }
 
     .display-main {
@@ -1086,5 +1312,25 @@ body {
     .podium-place-2,
     .podium-place-3 {
         grid-column: 1;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .waiting-room-heading,
+    .questionnaire-picker-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .waiting-room-code {
+        justify-items: start;
+    }
+
+    .waiting-room-actions .btn {
+        width: 100%;
+    }
+
+    .game-settings-row .form-label {
+        min-height: 0;
     }
 }
