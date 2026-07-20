@@ -1,15 +1,25 @@
 {% extends "base.html" %}
+{% from "includes/branding.html" import college_logo %}
+
+{% block body_class %}entry-page{% endblock %}
 
 {% block body %}
-<main class="auth-screen">
+<main id="main-content" class="auth-screen">
     <form method="post" class="auth-card">
-        <h1>Ingreso de Jueces</h1>
+        <div class="auth-brand">
+            {{ college_logo("auth-college-logo") }}
+        </div>
+        <div class="auth-heading">
+            <span class="eyebrow">Olimpiadas del Conocimiento</span>
+            <h1>Ingreso de jueces</h1>
+            <p>Accede al panel para preparar y dirigir la competencia.</p>
+        </div>
         {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-        <label class="form-label">Usuario</label>
-        <input class="form-control" name="username" autocomplete="username" required>
-        <label class="form-label mt-3">Contraseña</label>
-        <input class="form-control" name="password" type="password" autocomplete="current-password" required>
-        <button class="btn btn-primary w-100 mt-4">Entrar</button>
+        <label class="form-label" for="judgeUsername">Usuario</label>
+        <input id="judgeUsername" class="form-control" name="username" autocomplete="username" required autofocus>
+        <label class="form-label mt-3" for="judgePassword">Contraseña</label>
+        <input id="judgePassword" class="form-control" name="password" type="password" autocomplete="current-password" required>
+        <button class="btn btn-primary w-100 mt-4" type="submit">Entrar</button>
     </form>
 </main>
 {% endblock %}

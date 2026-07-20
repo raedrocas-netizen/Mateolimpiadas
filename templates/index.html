@@ -1,15 +1,46 @@
 {% extends "base.html" %}
+{% from "includes/branding.html" import college_logo, olympics_logo %}
+
+{% block body_class %}home-page{% endblock %}
 
 {% block body %}
-<main class="home-screen">
-    <section class="home-panel text-center">
-        <img src="{{ url_for('static', filename='img/logos/mateolimpiadas_logo.png') }}" class="brand-logo" alt="MateOlimpiadas">
-        <h1>Olimpiadas del Conocimiento</h1>
-        <div class="home-actions">
-            <a href="{{ url_for('participant.join') }}" class="btn btn-primary btn-lg">Soy Participante</a>
-            <a href="{{ url_for('judge.login') }}" class="btn btn-outline-primary btn-lg">Soy Juez</a>
-            <a href="{{ url_for('main.display') }}" class="btn btn-outline-secondary btn-lg">Pantalla Publica</a>
+<main id="main-content" class="home-screen">
+    <section class="home-panel">
+        <div class="home-hero">
+            <div class="home-logo-stage">
+                {{ olympics_logo("home-olympics-logo") }}
+            </div>
+            <div class="home-copy">
+                <div class="home-institution">
+                    {{ college_logo("home-college-logo") }}
+                    <span>Competencia académica institucional</span>
+                </div>
+                <p class="eyebrow">IMB-PC · Sede Petapa</p>
+                <h1>Olimpiadas del Conocimiento</h1>
+                <p class="home-lead">Conocimiento, estrategia y trabajo en equipo en una experiencia competitiva en tiempo real.</p>
+            </div>
         </div>
+
+        <nav class="role-grid" aria-label="Selecciona cómo ingresar">
+            <a href="{{ url_for('judge.login') }}" class="role-card role-card-judge">
+                <span class="role-card-index" aria-hidden="true">01</span>
+                <span class="role-card-label">Juez</span>
+                <strong>Administra y dirige competencias</strong>
+                <span class="role-card-action">Ingresar como juez <span aria-hidden="true">→</span></span>
+            </a>
+            <a href="{{ url_for('participant.join') }}" class="role-card role-card-participant">
+                <span class="role-card-index" aria-hidden="true">02</span>
+                <span class="role-card-label">Participante</span>
+                <strong>Conéctate con tu equipo</strong>
+                <span class="role-card-action">Entrar a una sala <span aria-hidden="true">→</span></span>
+            </a>
+            <a href="{{ url_for('main.display') }}" class="role-card role-card-display">
+                <span class="role-card-index" aria-hidden="true">03</span>
+                <span class="role-card-label">Pantalla pública</span>
+                <strong>Sigue la competencia en vivo</strong>
+                <span class="role-card-action">Conectar pantalla <span aria-hidden="true">→</span></span>
+            </a>
+        </nav>
     </section>
 </main>
 {% endblock %}

@@ -1,12 +1,22 @@
 ﻿{% extends "base.html" %}
 
+{% from "includes/branding.html" import college_logo %}
+
+{% block body_class %}competition-page participant-page{% endblock %}
+
 {% block body %}
-<main class="competition-shell participant-view">
+<main id="main-content" class="competition-shell participant-view">
     <section class="topbar">
-        <div class="participant-identity">
-            <strong id="teamName">Equipo</strong>
-            <span id="roomCode" class="badge text-bg-light"></span>
-            <span id="connectionStatus" class="connection-status" role="status" aria-live="polite">Conectando...</span>
+        <div class="participant-header-brand">
+            <a class="participant-logo-plate" href="{{ url_for('main.index') }}" aria-label="Ir al inicio">
+                {{ college_logo("participant-header-logo") }}
+            </a>
+            <div class="participant-identity">
+                <span class="participant-team-label">Equipo</span>
+                <strong id="teamName">Equipo</strong>
+                <span id="roomCode" class="app-badge"></span>
+                <span id="connectionStatus" class="connection-status" role="status" aria-live="polite">Conectando...</span>
+            </div>
         </div>
         <div class="timer-stack">
             <div id="timer" class="timer">--</div>
@@ -27,8 +37,10 @@
         <div id="participantQuestionContent" class="participant-question-content">
             <div class="question-eyebrow">Pregunta actual</div>
             <h1 id="questionText">Esperando que el juez inicie la competencia.</h1>
-            <button id="expandQuestionImage" class="question-image-control d-none" type="button" aria-label="Ampliar imagen de pregunta">
-                <img id="questionImage" class="question-image" alt="Imagen de pregunta">
+            <button id="expandQuestionImage" class="image-frame question-image-control d-none" type="button" aria-label="Ampliar imagen de pregunta">
+                <span class="image-media">
+                    <img id="questionImage" class="image-content question-image" alt="Imagen de pregunta">
+                </span>
                 <span>Ampliar imagen</span>
             </button>
         </div>
@@ -66,7 +78,11 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar imagen ampliada"></button>
             </div>
             <div class="modal-body">
-                <img id="participantImageModalContent" class="question-image-modal-full" alt="Imagen de pregunta ampliada">
+                <div class="image-frame image-frame-modal">
+                    <div class="image-media">
+                        <img id="participantImageModalContent" class="image-content question-image-modal-full" alt="Imagen de pregunta ampliada">
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>

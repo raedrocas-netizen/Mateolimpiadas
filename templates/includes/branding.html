@@ -1,0 +1,25 @@
+{% macro themed_logo(light_filename, alt, class_name, width, height, loading="eager", dark_filename=None) -%}
+<img
+    data-logo-light="{{ url_for('static', filename=light_filename) }}"
+    {% if dark_filename %}data-logo-dark="{{ url_for('static', filename=dark_filename) }}"{% endif %}
+    data-logo-variant="pending"
+    class="{{ class_name }}"
+    alt="{{ alt }}"
+    width="{{ width }}"
+    height="{{ height }}"
+    loading="{{ loading }}"
+    decoding="async"
+>
+{%- endmacro %}
+
+{% macro college_logo(class_name="institution-logo", loading="eager", dark_filename="img/logos/logo_colegio_dark.png") -%}
+{{ themed_logo("img/logos/logo_colegio.png", "Colegio IMB-PC", class_name, 512, 146, loading, dark_filename) }}
+{%- endmacro %}
+
+{% macro olympics_logo(class_name="olympics-logo", loading="eager", dark_filename="img/logos/logo_olimpiadas_matematica_dark.png") -%}
+{{ themed_logo("img/logos/logo_olimpiadas_matematica.png", "Olimpiadas de Matemática IMB-PC", class_name, 986, 986, loading, dark_filename) }}
+{%- endmacro %}
+
+{% macro petapa_logo(class_name="petapa-logo", loading="lazy", dark_filename="img/logos/logo_petapa_dark.png") -%}
+{{ themed_logo("img/logos/logo_petapa.png", "IMB-PC, 5to BACOM, Sede Petapa", class_name, 885, 825, loading, dark_filename) }}
+{%- endmacro %}

@@ -1,23 +1,35 @@
 {% extends "base.html" %}
 
+{% from "includes/branding.html" import college_logo, olympics_logo %}
+
+{% block body_class %}competition-page display-page{% endblock %}
+
 {% block body %}
-<main class="display-screen">
+<main id="main-content" class="display-screen">
     <section id="displayJoinPanel" class="auth-screen">
-        <form id="displayForm" class="auth-card">
-            <h1>Pantalla Publica</h1>
-            <p class="text-secondary">Ingresa el codigo de sala para mostrar la competencia al publico.</p>
-            <label class="form-label">Codigo de sala</label>
+        <form id="displayForm" class="auth-card display-join-card">
+            <div class="display-entry-brand">
+                {{ olympics_logo("display-entry-olympics-logo") }}
+                {{ college_logo("display-entry-college-logo") }}
+            </div>
+            <span class="eyebrow">Transmisión institucional</span>
+            <h1>Pantalla pública</h1>
+            <p class="text-secondary">Ingresa el código de sala para mostrar la competencia al público.</p>
+            <label class="form-label" for="displayCodeInput">Código de sala</label>
             <input id="displayCodeInput" class="form-control code-input" name="codigo_partida" required>
-            <button class="btn btn-primary w-100 mt-4">Conectar pantalla</button>
-            <div id="displayJoinMessage" class="small-message mt-3"></div>
+            <button class="btn btn-primary w-100 mt-4" type="submit">Conectar pantalla</button>
+            <div id="displayJoinMessage" class="small-message mt-3" role="status" aria-live="polite"></div>
         </form>
     </section>
 
     <section id="displayLivePanel" class="display-live d-none">
         <header class="display-header">
-            <div>
-                <small>Olimpiadas del Conocimiento</small>
-                <h1 id="displayGameName">Competencia</h1>
+            <div class="display-brand-heading">
+                <span class="display-logo-plate">{{ college_logo("display-header-logo") }}</span>
+                <div>
+                    <small>Olimpiadas del Conocimiento</small>
+                    <h1 id="displayGameName">Competencia</h1>
+                </div>
             </div>
             <div class="display-room-code">
                 <span>Codigo</span>
@@ -32,7 +44,11 @@
                     <div id="displayQuestionNumber" class="question-counter">Pregunta -- / --</div>
                 </div>
                 <h2 id="displayQuestionText">Esperando que el juez inicie la competencia.</h2>
-                <img id="displayQuestionImage" class="display-question-image d-none" alt="Imagen de pregunta">
+                <div class="image-frame display-image-frame">
+                    <div class="image-media">
+                        <img id="displayQuestionImage" class="image-content display-question-image d-none" alt="Imagen de pregunta">
+                    </div>
+                </div>
                 <div id="displayWordStatus" class="display-word-status">Esperando que un equipo solicite la palabra...</div>
                 <div class="display-queue-panel">
                     <div class="display-queue-title">Orden de solicitudes</div>

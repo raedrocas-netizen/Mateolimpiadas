@@ -1,12 +1,22 @@
 ﻿{% extends "base.html" %}
 
+{% from "includes/branding.html" import college_logo, olympics_logo %}
+
+{% block body_class %}dashboard-page{% endblock %}
+
 {% block body %}
-<main class="dashboard-shell">
-    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
+<main id="main-content" class="dashboard-shell">
+    <nav class="navbar navbar-expand-lg app-navbar sticky-top" aria-label="Navegación del juez">
         <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="#">Olimpiadas del Conocimiento</a>
-            <div class="d-flex align-items-center gap-3">
-                <span class="text-secondary">{{ judge_name }}</span>
+            <a class="navbar-brand app-navbar-brand" href="{{ url_for('judge.dashboard') }}">
+                <span class="app-navbar-logo-plate">{{ college_logo("app-navbar-logo") }}</span>
+                <span class="app-navbar-title">
+                    <strong>Olimpiadas del Conocimiento</strong>
+                    <span>Panel de competencia</span>
+                </span>
+            </a>
+            <div class="app-navbar-meta">
+                <span class="judge-name">{{ judge_name }}</span>
                 <a href="{{ url_for('judge.logout') }}" class="btn btn-sm btn-outline-secondary">Salir</a>
             </div>
         </div>
@@ -137,9 +147,12 @@
 
             <section class="tab-pane fade" id="liveTab">
                 <div id="activeRoomHeader" class="tool-card waiting-room-heading mb-3 d-none">
-                    <div>
-                        <span class="eyebrow">Administración de sala</span>
-                        <h2 id="activeRoomName">Competencia</h2>
+                    <div class="waiting-room-brand">
+                        {{ olympics_logo("waiting-room-logo", "lazy") }}
+                        <div>
+                            <span class="eyebrow">Administración de sala</span>
+                            <h2 id="activeRoomName">Competencia</h2>
+                        </div>
                     </div>
                     <div class="waiting-room-code">
                         <span>Código de sala</span>
@@ -202,13 +215,21 @@
                                 <span id="judgeQuestionNumber" class="question-counter">Pregunta -- / --</span>
                             </div>
                             <div id="judgeQuestion" class="question-preview">Sin sala abierta.</div>
-                            <img id="judgeQuestionImage" class="judge-live-image d-none" alt="Imagen de pregunta">
-                            <button id="expandQuestionImage" class="btn btn-sm btn-outline-primary mt-2 d-none" type="button">Ampliar imagen</button>
+                            <div class="image-frame judge-image-frame">
+                                <div class="image-media">
+                                    <img id="judgeQuestionImage" class="image-content judge-live-image d-none" alt="Imagen de pregunta">
+                                </div>
+                                <button id="expandQuestionImage" class="btn btn-sm btn-outline-primary d-none" type="button">Ampliar imagen</button>
+                            </div>
                             <div class="answer-preview mt-3">
                                 <small>Respuesta esperada</small>
                                 <div id="judgeAnswer">Sin respuesta cargada.</div>
-                                <img id="judgeAnswerImage" class="judge-live-image d-none" alt="Imagen de respuesta">
-                                <button id="expandAnswerImage" class="btn btn-sm btn-outline-primary mt-2 d-none" type="button">Ampliar imagen</button>
+                                <div class="image-frame judge-image-frame">
+                                    <div class="image-media">
+                                        <img id="judgeAnswerImage" class="image-content judge-live-image d-none" alt="Imagen de respuesta">
+                                    </div>
+                                    <button id="expandAnswerImage" class="btn btn-sm btn-outline-primary d-none" type="button">Ampliar imagen</button>
+                                </div>
                             </div>
                         </div>
                         <div class="judge-live-bottom">
@@ -243,7 +264,11 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar imagen ampliada"></button>
             </div>
             <div class="modal-body">
-                <img id="judgeImageModalContent" class="question-image-modal-full" alt="Imagen ampliada">
+                <div class="image-frame image-frame-modal">
+                    <div class="image-media">
+                        <img id="judgeImageModalContent" class="image-content question-image-modal-full" alt="Imagen ampliada">
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>

@@ -1,9 +1,19 @@
 {% extends "base.html" %}
+{% from "includes/branding.html" import college_logo, olympics_logo %}
+
+{% block body_class %}entry-page participant-entry-page{% endblock %}
 
 {% block body %}
-<main class="auth-screen">
-    <form id="joinForm" class="auth-card">
-        <h1>Participante</h1>
+<main id="main-content" class="auth-screen">
+    <form id="joinForm" class="auth-card participant-join-card">
+        <div class="participant-entry-brand">
+            {{ olympics_logo("participant-entry-olympics-logo") }}
+            <div>
+                {{ college_logo("participant-entry-college-logo") }}
+                <span class="eyebrow">Ingreso de equipo</span>
+                <h1>Participante</h1>
+            </div>
+        </div>
         <p class="text-secondary">Ingresa el código y tu sede. Si el equipo ya existe, volverás directamente a la competencia.</p>
         <label class="form-label" for="codigoPartida">Código de sala</label>
         <input id="codigoPartida" class="form-control code-input" name="codigo_partida" autocomplete="off" required>
@@ -19,7 +29,7 @@
             <textarea id="membersInput" class="form-control" name="integrantes" rows="3"></textarea>
         </div>
 
-        <button id="joinButton" class="btn btn-primary w-100 mt-4">Conectarse</button>
+        <button id="joinButton" class="btn btn-primary w-100 mt-4" type="submit">Conectarse</button>
         <div id="joinMessage" class="small-message mt-3" role="status" aria-live="polite"></div>
     </form>
 </main>

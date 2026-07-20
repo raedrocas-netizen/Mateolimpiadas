@@ -1,12 +1,22 @@
 {% extends "base.html" %}
 
+{% from "includes/branding.html" import college_logo %}
+
+{% block body_class %}dashboard-page{% endblock %}
+
 {% block body %}
-<main class="dashboard-shell">
-    <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top">
+<main id="main-content" class="dashboard-shell">
+    <nav class="navbar navbar-expand-lg app-navbar sticky-top" aria-label="Navegación del juez">
         <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="{{ url_for('judge.dashboard') }}">Olimpiadas del Conocimiento</a>
-            <div class="d-flex align-items-center gap-3">
-                <span class="text-secondary">{{ judge_name }}</span>
+            <a class="navbar-brand app-navbar-brand" href="{{ url_for('judge.dashboard') }}">
+                <span class="app-navbar-logo-plate">{{ college_logo("app-navbar-logo") }}</span>
+                <span class="app-navbar-title">
+                    <strong>Olimpiadas del Conocimiento</strong>
+                    <span>Administración de preguntas</span>
+                </span>
+            </a>
+            <div class="app-navbar-meta">
+                <span class="judge-name">{{ judge_name }}</span>
                 <a href="{{ url_for('judge.dashboard') }}" class="btn btn-sm btn-outline-primary">Dashboard</a>
                 <a href="{{ url_for('judge.logout') }}" class="btn btn-sm btn-outline-secondary">Salir</a>
             </div>
@@ -48,8 +58,10 @@
                                 <small>Selecciona un archivo para verlo antes de guardar.</small>
                             </div>
                             <div class="image-attachment-file d-none" data-preview-file>
-                                <button class="image-attachment-thumbnail" type="button" data-preview-open aria-label="Ver imagen de pregunta en tamaño completo">
-                                    <img data-preview-thumbnail alt="Previsualización de la imagen de pregunta">
+                                <button class="image-frame image-attachment-thumbnail" type="button" data-preview-open aria-label="Ver imagen de pregunta en tamaño completo">
+                                    <span class="image-media">
+                                        <img class="image-content" data-preview-thumbnail alt="Previsualización de la imagen de pregunta">
+                                    </span>
                                 </button>
                                 <div class="image-attachment-details">
                                     <button class="image-attachment-name" type="button" data-preview-name data-preview-open></button>
@@ -81,8 +93,10 @@
                                 <small>Selecciona un archivo para verlo antes de guardar.</small>
                             </div>
                             <div class="image-attachment-file d-none" data-preview-file>
-                                <button class="image-attachment-thumbnail" type="button" data-preview-open aria-label="Ver imagen de respuesta en tamaño completo">
-                                    <img data-preview-thumbnail alt="Previsualización de la imagen de respuesta esperada">
+                                <button class="image-frame image-attachment-thumbnail" type="button" data-preview-open aria-label="Ver imagen de respuesta en tamaño completo">
+                                    <span class="image-media">
+                                        <img class="image-content" data-preview-thumbnail alt="Previsualización de la imagen de respuesta esperada">
+                                    </span>
                                 </button>
                                 <div class="image-attachment-details">
                                     <button class="image-attachment-name" type="button" data-preview-name data-preview-open></button>
@@ -143,7 +157,11 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar vista de imagen"></button>
                 </div>
                 <div class="modal-body">
-                    <img id="imagePreviewModalImage" class="question-image-modal-full" alt="Imagen ampliada">
+                    <div class="image-frame image-frame-modal">
+                        <div class="image-media">
+                            <img id="imagePreviewModalImage" class="image-content question-image-modal-full" alt="Imagen ampliada">
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <a id="imagePreviewModalDownload" class="btn btn-primary" download>Descargar imagen</a>

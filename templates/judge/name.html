@@ -1,12 +1,22 @@
 {% extends "base.html" %}
+{% from "includes/branding.html" import college_logo %}
+
+{% block body_class %}entry-page{% endblock %}
 
 {% block body %}
-<main class="auth-screen">
+<main id="main-content" class="auth-screen">
     <form method="post" class="auth-card">
-        <h1>Nombre del juez</h1>
-        <label class="form-label">¿Quién dirigirá la competencia?</label>
-        <input class="form-control" name="judge_name" required autofocus>
-        <button class="btn btn-primary w-100 mt-4">Continuar</button>
+        <div class="auth-brand">
+            {{ college_logo("auth-college-logo") }}
+        </div>
+        <div class="auth-heading">
+            <span class="eyebrow">Panel del juez</span>
+            <h1>Nombre del juez</h1>
+            <p>Este nombre identificará a quien dirige la competencia.</p>
+        </div>
+        <label class="form-label" for="judgeName">¿Quién dirigirá la competencia?</label>
+        <input id="judgeName" class="form-control" name="judge_name" autocomplete="name" required autofocus>
+        <button class="btn btn-primary w-100 mt-4" type="submit">Continuar</button>
     </form>
 </main>
 {% endblock %}
