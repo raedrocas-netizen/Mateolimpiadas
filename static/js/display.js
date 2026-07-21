@@ -9,6 +9,7 @@ let displayCurrentQuestion = null;
 let displayState = {};
 let displayRequests = [];
 let displayPaused = false;
+let suppressDisplayTimeupUntil = 0;
 
 function setDisplayMessage(message, success = true) {
     displayJoinMessage.textContent = message || "";
@@ -289,6 +290,23 @@ displaySocket.on("actualizar_cronometro", timer => {
         return;
     }
 
+    const remaining = normalizedTimerValue(timer);
+    const suppressTimeupSound = (
+        Date.now() <= suppressDisplayTimeupUntil
+        && (remaining === 0 || timer?.exhausted)
+    );
+
+    if (suppressTimeupSound) {
+        renderTimer(
+            document.getElementById("displayTimer"),
+            timer,
+            document.getElementById("displayTimerProgress")
+        );
+        stopTimerTickSound("display");
+        suppressDisplayTimeupUntil = 0;
+        return;
+    }
+
     renderDisplayTimer(timer);
 });
 
@@ -328,7 +346,14 @@ displaySocket.on("respuesta_publica", payload => {
     }
 
     const correct = payload?.resultado === "CORRECTA";
+
+    if (correct) {
+        suppressDisplayTimeupUntil = Date.now() + 3000;
+        stopSound("timeup");
+    }
+
     playSound(correct ? "correct" : "incorrect");
+    
     if (Array.isArray(payload?.affected_requests)) {
         setDisplayQueue(
             payload.affected_requests.filter(
