@@ -75,6 +75,15 @@
             };
         }
 
+        if (competitionState === "Cuenta regresiva") {
+            return {
+                showQuestion: false,
+                requestEnabled: false,
+                status: "Cuenta regresiva",
+                message: competitionMessage || "Preparando la siguiente pregunta."
+            };
+        }
+
         if (ownRequestStatus === "EN_TURNO") {
             status = "¡Es tu turno!";
             message = "Tu equipo tiene la palabra.";
