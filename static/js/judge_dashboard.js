@@ -17,6 +17,7 @@ let pendingLiveAction = "";
 let liveTransitionActive = false;
 let liveTimerRemaining = null;
 let pendingParticipantDeletions = new Set();
+let judgePodiumState = {estado: "OCULTO", revision: 0};
 const QUESTIONNAIRE_ACTIVE_STATUS = "ACTIVO";
 const GAME_STATUS_WAITING = "ESPERANDO";
 const GAME_STATUS_IN_PROGRESS = "EN_CURSO";
@@ -821,6 +822,34 @@ function updateLiveActionButtons() {
     );
     finishButton.disabled = !controls.canFinish;
     finishButton.textContent = pendingLiveAction === "finish" ? "Finalizando..." : "Finalizar";
+    updateJudgePodiumControls();
+}
+
+function updateJudgePodiumControls() {
+    const final = currentGameState() === GAME_STATUS_FINISHED;
+    const stateIndex = PODIUM_STATE_ORDER.indexOf(judgePodiumState.estado);
+    $("#judgePodiumControls").classList.toggle("d-none", !final);
+    $("#judgePodiumState").textContent = judgePodiumState.estado.replaceAll("_", " ");
+    $("#judgePodiumPrevious").disabled = !final || stateIndex <= 0;
+    $("#judgePodiumNext").disabled = (
+        !final || stateIndex >= PODIUM_STATE_ORDER.length - 1
+    );
+}
+
+function requestJudgePodiumState(direction) {
+    const requestedState = nextPodiumState(judgePodiumState.estado, direction);
+
+    if (
+            currentGameState() !== GAME_STATUS_FINISHED
+            || requestedState === judgePodiumState.estado
+    ) {
+        return;
+    }
+
+    judgeSocket.emit("cambiar_estado_podio", {
+        codigo_partida: liveCode,
+        estado: requestedState
+    });
 }
 
 function setPendingLiveAction(action) {
@@ -1017,6 +1046,12 @@ $("#nextQuestion").addEventListener("click", () => {
 });
 
 $("#finishGame").addEventListener("click", () => requestFinishGame(false));
+$("#judgePodiumPrevious").addEventListener("click", () => {
+    requestJudgePodiumState(-1);
+});
+$("#judgePodiumNext").addEventListener("click", () => {
+    requestJudgePodiumState(1);
+});
 
 $("#copyWaitingCode").addEventListener("click", () => (
     copyGameCode(JudgeGameHelpers.activeRoomCode(liveState?.partida))
@@ -1291,6 +1326,29 @@ function markIncorrect(id) {
 
     judgeSocket.emit("respuesta_incorrecta", {codigo_partida: liveCode, id_solicitud: id});
 }
+
+judgeSocket.on("connect", () => {
+    if (liveCode) {
+        judgeSocket.emit("juez_unirse", {codigo_partida: liveCode});
+    }
+});
+
+judgeSocket.on("estado_podio", payload => {
+    if (!payload || !PODIUM_STATE_ORDER.includes(payload.estado)) {
+        return;
+    }
+
+    if (
+            payload.codigo_partida
+            && liveCode
+            && payload.codigo_partida !== liveCode
+    ) {
+        return;
+    }
+
+    judgePodiumState = payload;
+    updateJudgePodiumControls();
+});
 
 judgeSocket.on("estado_sala", state => {
     if (!state?.partida) {

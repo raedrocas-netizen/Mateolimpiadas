@@ -199,6 +199,14 @@
                                 </div>
                                 <div class="status-pill mt-3" id="judgeCompetitionStatus">Sala sin abrir</div>
                                 <div class="small-message mt-2" id="judgeCompetitionMessage" role="status" aria-live="polite">Abre una sala para ver su estado.</div>
+                                <div id="judgePodiumControls" class="judge-podium-controls d-none">
+                                    <span class="eyebrow">Control del podio</span>
+                                    <div class="podium-controls" aria-label="Controles del podio final">
+                                        <button id="judgePodiumPrevious" class="btn btn-sm btn-outline-primary" type="button">Anterior</button>
+                                        <span id="judgePodiumState" class="podium-state-label">OCULTO</span>
+                                        <button id="judgePodiumNext" class="btn btn-sm btn-primary" type="button">Siguiente</button>
+                                    </div>
+                                </div>
                                 <div class="timer mt-3" id="judgeTimer">--</div>
                                 <div class="timer-progress mt-2" aria-hidden="true">
                                     <div id="judgeTimerProgress" class="timer-progress-bar"></div>

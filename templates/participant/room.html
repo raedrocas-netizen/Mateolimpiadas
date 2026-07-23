@@ -18,7 +18,7 @@
                 <span id="connectionStatus" class="connection-status" role="status" aria-live="polite">Conectando...</span>
             </div>
         </div>
-        <div class="timer-stack">
+        <div id="participantTimerStack" class="timer-stack">
             <div id="timer" class="timer">--</div>
             <div class="timer-progress" aria-hidden="true">
                 <div id="participantTimerProgress" class="timer-progress-bar"></div>
@@ -57,12 +57,12 @@
     </section>
 
     <section class="ranking-panel">
-        <h2>Marcador</h2>
+        <h2 class="participant-ranking-title">Marcador</h2>
         <div id="podiumTitle" class="text-secondary mb-2 d-none">Podio final</div>
         <div id="ranking"></div>
         <div id="finalActions" class="final-actions d-none">
             <div id="teamScore" class="score-pill"></div>
-            <div class="d-flex flex-wrap justify-content-center gap-2">
+            <div class="final-actions-buttons">
                 <button id="connectAnotherRoom" class="btn btn-primary" type="button">Conectarse a otra sala</button>
                 <a href="/" class="btn btn-outline-primary">Volver al inicio</a>
             </div>

@@ -17,12 +17,23 @@
             <p class="text-secondary">Ingresa el código de sala para mostrar la competencia al público.</p>
             <label class="form-label" for="displayCodeInput">Código de sala</label>
             <input id="displayCodeInput" class="form-control code-input" name="codigo_partida" required>
+            <label class="display-question-preference" for="displayHideQuestion">
+                <input id="displayHideQuestion" class="form-check-input" type="checkbox" checked>
+                <span>
+                    <strong>Ocultar pregunta al público</strong>
+                    <small>El ranking, el tiempo y las solicitudes seguirán visibles.</small>
+                </span>
+            </label>
             <button class="btn btn-primary w-100 mt-4" type="submit">Conectar pantalla</button>
             <div id="displayJoinMessage" class="small-message mt-3" role="status" aria-live="polite"></div>
         </form>
     </section>
 
-    <section id="displayLivePanel" class="display-live d-none">
+    <section
+        id="displayLivePanel"
+        class="display-live d-none"
+        data-can-control-podium="{{ 'true' if session.get('judge_authenticated') is sameas true else 'false' }}"
+    >
         <header class="display-header">
             <div class="display-brand-heading">
                 <span class="display-logo-plate">{{ college_logo("display-header-logo") }}</span>
@@ -31,16 +42,42 @@
                     <h1 id="displayGameName">Competencia</h1>
                 </div>
             </div>
-            <div class="display-room-code">
-                <span>Codigo</span>
-                <strong id="displayRoomCode">--</strong>
+            <div class="display-header-meta">
+                <span id="displayConnectionStatus" class="connection-status is-reconnecting" role="status" aria-live="polite">Reconectando</span>
+                <div class="display-room-code">
+                    <span>Código</span>
+                    <strong id="displayRoomCode">--</strong>
+                </div>
             </div>
         </header>
 
-        <section class="display-main">
-            <article class="display-question-panel">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div id="displayStatus" class="status-pill">Sala abierta</div>
+        <section id="displayWaitingPanel" class="display-waiting-panel">
+            <div class="display-waiting-hero">
+                <div>
+                    <span class="eyebrow">Sala de espera pública</span>
+                    <h2 id="displayWaitingGameName">Competencia</h2>
+                    <p>Comparte el código para que los equipos puedan ingresar.</p>
+                </div>
+                <div class="display-waiting-code" aria-label="Código de sala">
+                    <span>Código de sala</span>
+                    <strong id="displayWaitingRoomCode">--</strong>
+                </div>
+                <div class="display-connected-count" aria-live="polite">
+                    <strong id="displayConnectedCount">0</strong>
+                    <span>equipos conectados</span>
+                </div>
+            </div>
+            <div id="displayWaitingEmpty" class="display-waiting-empty">
+                <strong>Aún no hay equipos conectados</strong>
+                <span>Las sedes aparecerán aquí al ingresar.</span>
+            </div>
+            <div id="displayWaitingTeams" class="display-waiting-teams" aria-live="polite"></div>
+        </section>
+
+        <section id="displayCompetitionPanel" class="display-main d-none no-question-image">
+            <article class="display-question-panel no-question-image">
+                <div class="display-question-heading">
+                    <span class="question-eyebrow">Pregunta actual</span>
                     <div id="displayQuestionNumber" class="question-counter">Pregunta -- / --</div>
                 </div>
                 <h2 id="displayQuestionText">Esperando que el juez inicie la competencia.</h2>
@@ -49,33 +86,51 @@
                         <img id="displayQuestionImage" class="image-content display-question-image d-none" alt="Imagen de pregunta">
                     </div>
                 </div>
-                <div id="displayWordStatus" class="display-word-status">Esperando que un equipo solicite la palabra...</div>
-                <div class="display-queue-panel">
-                    <div class="display-queue-title">Orden de solicitudes</div>
-                    <div id="displayWordQueue" class="display-word-queue">
-                        <div class="text-secondary">Sin solicitudes.</div>
-                    </div>
-                </div>
             </article>
 
             <aside class="display-side-panel">
-                <div class="display-timer-card">
-                    <div id="displayTimer" class="timer display-timer">--</div>
-                    <div class="timer-progress mt-3" aria-hidden="true">
-                        <div id="displayTimerProgress" class="timer-progress-bar"></div>
+                <div class="display-live-summary">
+                    <div class="display-timer-card">
+                        <div class="display-timer-copy">
+                            <span class="display-timer-label">Tiempo restante</span>
+                            <div id="displayTimer" class="timer display-timer">--</div>
+                        </div>
+                        <div class="timer-progress" aria-hidden="true">
+                            <div id="displayTimerProgress" class="timer-progress-bar"></div>
+                        </div>
+                    </div>
+                    <div class="display-status-compact">
+                        <span>Estado actual</span>
+                        <div id="displayStatus" class="status-pill">Sala abierta</div>
                     </div>
                 </div>
                 <div class="display-ranking-card">
                     <h2>Tabla de posiciones</h2>
                     <div id="displayRanking" class="list-panel"></div>
                 </div>
+                <div class="display-queue-panel">
+                    <div class="display-queue-title">Solicitudes de palabra</div>
+                    <div id="displayWordStatus" class="display-word-status">Esperando solicitudes...</div>
+                    <div id="displayWordQueue" class="display-word-queue">
+                        <div class="text-secondary queue-empty">Aún no hay solicitudes de palabra.</div>
+                    </div>
+                </div>
             </aside>
         </section>
 
         <section id="displayPodiumPanel" class="display-podium d-none">
-            <h2>Podio final</h2>
-            <div id="displayPodium"></div>
-            <a href="/display" class="btn btn-outline-primary mt-3">Conectar otra sala</a>
+            <div class="display-podium-heading">
+                <div>
+                    <span class="eyebrow">Resultados finales</span>
+                    <h2>Podio final</h2>
+                </div>
+                <div id="displayPodiumControls" class="podium-controls d-none" aria-label="Controles del podio">
+                    <button id="displayPodiumPrevious" class="btn btn-sm btn-outline-primary" type="button">Anterior</button>
+                    <span id="displayPodiumState" class="podium-state-label">OCULTO</span>
+                    <button id="displayPodiumNext" class="btn btn-sm btn-primary" type="button">Siguiente</button>
+                </div>
+            </div>
+            <div id="displayPodium" class="display-podium-stage"></div>
         </section>
     </section>
 </main>

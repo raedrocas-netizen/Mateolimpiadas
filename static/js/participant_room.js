@@ -30,6 +30,7 @@ function initializeParticipantRoom(sessionData) {
     const finalActions = document.getElementById("finalActions");
     const teamScore = document.getElementById("teamScore");
     const podiumTitle = document.getElementById("podiumTitle");
+    const participantTimerStack = document.getElementById("participantTimerStack");
     const connectionStatusEl = document.getElementById("connectionStatus");
     const participantNotice = document.getElementById("participantNotice");
     const connectAnotherRoom = document.getElementById("connectAnotherRoom");
@@ -53,6 +54,10 @@ function initializeParticipantRoom(sessionData) {
     let requestStateRebuildPending = false;
     let currentPresentation = null;
     let noticeTimer = null;
+    let participantPodiumState = {estado: "OCULTO", revision: 0};
+    let participantPodiumHydrated = false;
+    let participantFinalRanking = {ranking: []};
+    let participantPodiumCelebrated = false;
 
     document.getElementById("teamName").textContent = sessionData.nombre_equipo || "Equipo";
     document.getElementById("roomCode").textContent = sessionData.codigo_partida || "";
@@ -226,18 +231,71 @@ function initializeParticipantRoom(sessionData) {
         currentGameState = "FINALIZADA";
         participantTransitionBlocked = true;
         document.querySelector(".participant-view")?.classList.add("podium-mode");
+        participantTimerStack.setAttribute("aria-hidden", "true");
         requestButton.classList.add("d-none");
         requestButton.disabled = true;
         finalActions.classList.remove("d-none");
         podiumTitle.classList.remove("d-none");
+        participantFinalRanking = rankingData || participantFinalRanking;
         teamScore.textContent = own
             ? `Puntaje de tu equipo: ${own.puntaje} pts`
             : "Puntaje final disponible en el marcador.";
-        renderAnimatedPodium(rankingEl, rankingData);
+        renderSynchronizedPodium(
+            rankingEl,
+            participantFinalRanking,
+            participantPodiumState,
+            {animate: false}
+        );
+    }
+
+    function applyParticipantPodiumState(payload) {
+        if (!payload || !PODIUM_STATE_ORDER.includes(payload.estado)) {
+            return;
+        }
+
+        if (
+                payload.codigo_partida
+                && payload.codigo_partida !== sessionData.codigo_partida
+        ) {
+            return;
+        }
+
+        const previous = participantPodiumState;
+        const changedRevision = (
+            participantPodiumHydrated
+            && Number(payload.revision) > Number(previous.revision)
+        );
+        const celebrate = (
+            changedRevision
+            && !participantPodiumCelebrated
+            && ["PRIMER_LUGAR", "COMPLETO"].includes(payload.estado)
+        );
+
+        if (payload.estado === "OCULTO" && Number(payload.revision) === 0) {
+            participantPodiumCelebrated = false;
+        } else if (celebrate) {
+            participantPodiumCelebrated = true;
+        }
+
+        participantPodiumState = payload;
+        participantPodiumHydrated = true;
+
+        if (currentGameState === "FINALIZADA") {
+            renderSynchronizedPodium(
+                rankingEl,
+                participantFinalRanking,
+                participantPodiumState,
+                {animate: changedRevision, celebrate}
+            );
+        }
     }
 
     function resetFinalView() {
         document.querySelector(".participant-view")?.classList.remove("podium-mode");
+        participantTimerStack.removeAttribute("aria-hidden");
+        rankingEl.querySelector(".final-podium-view")?.classList.remove(
+            "podium-celebrating"
+        );
         finalActions.classList.add("d-none");
         podiumTitle.classList.add("d-none");
     }
@@ -494,12 +552,27 @@ function initializeParticipantRoom(sessionData) {
     });
 
     socket.on("actualizar_puntajes", ranking => {
+        if (currentGameState === "FINALIZADA") {
+            participantFinalRanking = ranking || participantFinalRanking;
+            renderSynchronizedPodium(
+                rankingEl,
+                participantFinalRanking,
+                participantPodiumState,
+                {animate: false}
+            );
+            return;
+        }
+
         renderRanking(rankingEl, ranking);
     });
 
     socket.on("mostrar_podio", ranking => {
         playSound("finish");
         showFinalPodium(ranking);
+    });
+
+    socket.on("estado_podio", payload => {
+        applyParticipantPodiumState(payload);
     });
 
     socket.on("participante_eliminado", payload => {
@@ -510,4 +583,5 @@ function initializeParticipantRoom(sessionData) {
         socket.disconnect();
         window.location.replace("/participante/?equipo_eliminado=1");
     });
+
 }
