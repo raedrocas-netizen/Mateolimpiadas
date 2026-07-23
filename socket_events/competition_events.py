@@ -23,9 +23,19 @@ from logical_business.partida_business import PartidaBusiness
 active_timer_tokens = {}
 connected_participants = {}
 connected_judges = {}
+connected_displays = {}
 active_game_actions = {}
 active_participant_deletions = set()
+podium_states = {}
 action_state_lock = Lock()
+
+PODIUM_STATES = (
+    "OCULTO",
+    "TERCER_LUGAR",
+    "SEGUNDO_LUGAR",
+    "PRIMER_LUGAR",
+    "COMPLETO"
+)
 
 
 def game_room(game_code):
@@ -61,11 +71,140 @@ def emit_live_event(socketio, event, payload, game_code):
             "actualizar_cronometro",
             "estado_competencia",
             "actualizar_puntajes",
-            "mostrar_podio"
+            "mostrar_podio",
+            "estado_podio"
     ):
         record_socket_payload(event, payload)
         with measure("SocketIO"):
             socketio.emit(event, payload, room=display_room(game_code))
+
+
+def public_display_participant(participant):
+    if not isinstance(participant, dict):
+        return None
+
+    site = str(participant.get("sede") or "").strip()
+
+    if site == "":
+        return None
+
+    payload = {
+        "sede": site,
+        "nombre": str(participant.get("nombre") or "").strip(),
+        "conectado": 1 if participant.get("conectado") == 1 else 0
+    }
+
+    if "integrantes" in participant:
+        payload["integrantes"] = str(
+            participant.get("integrantes") or ""
+        ).strip()
+
+    return payload
+
+
+def registered_display_participants(participants):
+    registered = []
+
+    for participant in participants or []:
+        if not isinstance(participant, dict):
+            continue
+
+        if not (
+                participant.get("id_participante")
+                or participant.get("codigo_participante")
+                or participant.get("nombre")
+        ):
+            continue
+
+        public_participant = public_display_participant(participant)
+
+        if public_participant is not None:
+            registered.append(public_participant)
+
+    return registered
+
+
+def emit_display_participants(
+        socketio,
+        game_code,
+        participants,
+        mode="ACTUALIZAR",
+        direct=False
+):
+    payload = {
+        "modo": mode,
+        "participantes": [
+            public_participant
+            for public_participant in (
+                public_display_participant(participant)
+                for participant in participants or []
+            )
+            if public_participant is not None
+        ]
+    }
+    record_socket_payload("actualizar_participantes_display", payload)
+
+    with measure("SocketIO"):
+        if direct:
+            emit("actualizar_participantes_display", payload)
+        else:
+            socketio.emit(
+                "actualizar_participantes_display",
+                payload,
+                room=display_room(game_code)
+            )
+
+
+def podium_state(game_code):
+    normalized_code = str(game_code or "").strip().upper()
+
+    with action_state_lock:
+        current = podium_states.get(normalized_code)
+
+        if current is None:
+            current = {
+                "codigo_partida": normalized_code,
+                "estado": "OCULTO",
+                "revision": 0
+            }
+
+        return dict(current)
+
+
+def reset_podium_state(game_code):
+    normalized_code = str(game_code or "").strip().upper()
+    state = {
+        "codigo_partida": normalized_code,
+        "estado": "OCULTO",
+        "revision": 0
+    }
+
+    with action_state_lock:
+        podium_states[normalized_code] = state
+
+    return dict(state)
+
+
+def update_podium_state(game_code, state):
+    normalized_code = str(game_code or "").strip().upper()
+
+    with action_state_lock:
+        current = podium_states.get(normalized_code, {
+            "codigo_partida": normalized_code,
+            "estado": "OCULTO",
+            "revision": 0
+        })
+
+        if current["estado"] == state:
+            return dict(current), False
+
+        updated = {
+            "codigo_partida": normalized_code,
+            "estado": state,
+            "revision": int(current.get("revision") or 0) + 1
+        }
+        podium_states[normalized_code] = updated
+        return dict(updated), True
 
 
 def emit_question(socketio, question, game_code):
@@ -616,6 +755,7 @@ def register_socket_events(socketio):
         join_room(judge_room(game_code))
         with measure("SocketIO"):
             emit("estado_sala", state)
+            emit("estado_podio", podium_state(game_code))
 
     @socketio.on("display_unirse")
     @socket_event_performance("display_unirse")
@@ -631,9 +771,73 @@ def register_socket_events(socketio):
                 })
             return
 
+        previous_game_code = connected_displays.get(request.sid)
+
+        if previous_game_code and previous_game_code != game_code:
+            leave_room(display_room(previous_game_code))
+
+        connected_displays[request.sid] = game_code
         join_room(display_room(game_code))
         with measure("SocketIO"):
             emit("estado_sala", state)
+        emit_display_participants(
+            socketio,
+            game_code,
+            registered_display_participants(state.get("participantes", [])),
+            mode="REEMPLAZAR",
+            direct=True
+        )
+        with measure("SocketIO"):
+            emit("estado_podio", podium_state(game_code))
+
+    @socketio.on("cambiar_estado_podio")
+    @socket_event_performance("cambiar_estado_podio")
+    def cambiar_estado_podio(data):
+        payload = data or {}
+        game_code = str(payload.get("codigo_partida", "")).strip().upper()
+        requested_state = str(payload.get("estado", "")).strip().upper()
+        sid = request.sid
+        participant_socket = sid in connected_participants
+        authenticated_judge = judge_authenticated()
+        judge_socket = (
+            authenticated_judge
+            and connected_judges.get(sid) == game_code
+        )
+        display_socket = (
+            authenticated_judge
+            and connected_displays.get(sid) == game_code
+        )
+
+        if participant_socket or not (judge_socket or display_socket):
+            emit("resultado_accion", {
+                "success": False,
+                "message": "Este cliente no puede controlar el podio."
+            })
+            return
+
+        if requested_state not in PODIUM_STATES:
+            emit("resultado_accion", {
+                "success": False,
+                "message": "El estado solicitado para el podio no es válido."
+            })
+            return
+
+        business = PartidaBusiness()
+        partida = business.get_by_code(game_code)
+
+        if partida is None or partida.get_estado() != sg.GAME_STATUS_FINISHED:
+            emit("resultado_accion", {
+                "success": False,
+                "message": "El podio solo puede controlarse con la partida finalizada."
+            })
+            return
+
+        state, changed = update_podium_state(game_code, requested_state)
+
+        if changed:
+            emit_live_event(socketio, "estado_podio", state, game_code)
+        else:
+            emit("estado_podio", state)
 
     @socketio.on("participante_unirse")
     @socket_event_performance("participante_unirse")
@@ -668,6 +872,11 @@ def register_socket_events(socketio):
                 },
                 game_code
             )
+            emit_display_participants(
+                socketio,
+                game_code,
+                [participant]
+            )
             if ranking is not None:
                 with measure("SocketIO"):
                     socketio.emit(
@@ -695,6 +904,8 @@ def register_socket_events(socketio):
         partida = business.get_by_code(game_code)
         join_room(game_room(game_code))
 
+        participant_for_display = None
+
         if code:
             join_room(participant_room(code))
             connected_participants[request.sid] = {
@@ -707,6 +918,7 @@ def register_socket_events(socketio):
                     partida.get_id_partida(),
                     code
                 )
+                participant_for_display = participant
 
                 if participant is not None and participant.get("conectado") != 1:
                     reconnect_result = business.join_game(
@@ -718,6 +930,7 @@ def register_socket_events(socketio):
 
                     if reconnect_result.get_success():
                         reconnected = reconnect_result.get_data()
+                        participant_for_display = reconnected
                         ranking = serialize_any(business.get_live_ranking(game_code))
                         emit_to_judge(
                             socketio,
@@ -742,13 +955,22 @@ def register_socket_events(socketio):
                                 game_code
                             )
 
+        if participant_for_display is not None:
+            emit_display_participants(
+                socketio,
+                game_code,
+                [{**participant_for_display, "conectado": 1}]
+            )
+
         with measure("SocketIO"):
             emit("estado_sala", build_live_state(game_code))
+            emit("estado_podio", podium_state(game_code))
 
     @socketio.on("disconnect")
     @socket_event_performance("disconnect")
     def participante_desconectar():
         connected_judges.pop(request.sid, None)
+        connected_displays.pop(request.sid, None)
         participant_ref = connected_participants.pop(request.sid, None)
 
         if not participant_ref:
@@ -796,6 +1018,19 @@ def register_socket_events(socketio):
                     ranking,
                     participant_ref["game_code"]
                 )
+                disconnected = next((
+                    participant
+                    for participant in ranking.get("ranking", [])
+                    if participant.get("participant_code")
+                    == participant_ref["participant_code"]
+                ), None)
+
+                if disconnected is not None:
+                    emit_display_participants(
+                        socketio,
+                        participant_ref["game_code"],
+                        [{**disconnected, "conectado": 0}]
+                    )
 
     @socketio.on("iniciar_competencia")
     @socket_event_performance("iniciar_competencia")
@@ -827,6 +1062,8 @@ def register_socket_events(socketio):
                 ))
             )
             return
+
+        reset_podium_state(partida.get_codigo_partida())
 
         try:
             socketio.start_background_task(
@@ -999,6 +1236,14 @@ def register_socket_events(socketio):
                             "message": "El juez eliminó este equipo de la sala de espera."
                         },
                         participant["codigo_participante"]
+                    )
+
+                if participant is not None:
+                    emit_display_participants(
+                        socketio,
+                        game_code,
+                        [participant],
+                        mode="ELIMINAR"
                     )
 
                 emit_state(socketio, game_code)
@@ -1381,6 +1626,7 @@ def register_socket_events(socketio):
 
             if result.get_success():
                 stop_timer(game_code)
+                hidden_podium = reset_podium_state(game_code)
                 ranking = serialize_any(business.get_live_ranking(game_code))
                 emit_live_event(
                     socketio,
@@ -1405,6 +1651,12 @@ def register_socket_events(socketio):
                         ranking,
                         game_code
                     )
+                emit_live_event(
+                    socketio,
+                    "estado_podio",
+                    hidden_podium,
+                    game_code
+                )
         except Exception as error:
             print(f"Error al finalizar competencia: {error}")
             emit(

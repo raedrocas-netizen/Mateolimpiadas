@@ -7,6 +7,41 @@ function escapeHtml(value) {
         .replaceAll("'", "&#039;");
 }
 
+function parseTeamMembers(value) {
+    const source = String(value ?? "").trim();
+
+    if (!source) {
+        return [];
+    }
+
+    const parts = /[\r\n]/.test(source)
+        ? source.split(/\r\n|\n|\r/)
+        : source.includes(";")
+            ? source.split(";")
+            : [source];
+
+    return parts.map(member => member.trim()).filter(Boolean);
+}
+
+function teamMembersInlineText(value) {
+    return parseTeamMembers(value).join(" • ");
+}
+
+function teamMembersListHtml(value) {
+    const members = parseTeamMembers(value);
+
+    if (!members.length) {
+        return "";
+    }
+
+    const fullLabel = members.join(", ");
+    return `
+        <ul class="team-members-list" title="${escapeHtml(fullLabel)}" aria-label="Integrantes: ${escapeHtml(fullLabel)}">
+            ${members.map(member => `<li>${escapeHtml(member)}</li>`).join("")}
+        </ul>
+    `;
+}
+
 function apiFetch(url, options = {}) {
     const finalOptions = {
         headers: {"Content-Type": "application/json"},
@@ -156,98 +191,308 @@ function normalizedTimerValue(timer) {
     return Number.isFinite(remaining) ? remaining : null;
 }
 
-function renderRanking(target, rankingData) {
-    const ranking = rankingData?.ranking || [];
-    const leaderScore = Math.max(
-        0,
-        ...ranking.map(item => Number(item.puntaje || 0))
-    );
-    const medals = ["&#129351;", "&#129352;", "&#129353;"];
+const LIVE_SITE_IDENTITIES = Object.freeze({
+    petapa: Object.freeze({accent: "#d4a900", tint: "#fff5bf", detail: "#705700"}),
+    "villa nueva": Object.freeze({accent: "#23834b", tint: "#e5f7ec", detail: "#14532d"}),
+    "san cristobal": Object.freeze({accent: "#c83e48", tint: "#ffe8ea", detail: "#7f1d2d"}),
+    antigua: Object.freeze({accent: "#7c3fb4", tint: "#f4e8ff", detail: "#581c87"}),
+    naranjo: Object.freeze({accent: "#e87920", tint: "#ffead7", detail: "#9a3412"}),
+    "aguilar batres": Object.freeze({accent: "#2d9fc5", tint: "#e1f6fd", detail: "#075985"}),
+    "san juan": Object.freeze({accent: "#3b82f6", tint: "#e5edf8", detail: "#173f73"}),
+    amatitlan: Object.freeze({accent: "#f0d9ad", tint: "#fff7e7", detail: "#8b2635"})
+});
+const DEFAULT_LIVE_SITE_IDENTITY = Object.freeze({
+    accent: "#2563eb",
+    tint: "#eef4ff",
+    detail: "#1e3a5f"
+});
+const PODIUM_STATE_ORDER = Object.freeze([
+    "OCULTO",
+    "TERCER_LUGAR",
+    "SEGUNDO_LUGAR",
+    "PRIMER_LUGAR",
+    "COMPLETO"
+]);
 
-    target.innerHTML = ranking.map((item, index) => `
-        <div class="ranking-row podium-row" style="--score-width: ${
-            leaderScore > 0
-                ? Math.max(4, Math.round((Number(item.puntaje || 0) / leaderScore) * 100))
-                : 0
-        }%">
-            <div class="ranking-row-head">
-                <div>
-                    <strong>${medals[index] || `${index + 1}.`} ${escapeHtml(item.sede || item.nombre)}</strong>
-                    <small>${escapeHtml(item.nombre || "")}</small>
+function normalizedSiteName(site) {
+    return String(site || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+}
+
+function teamSiteIdentity(site) {
+    const normalized = normalizedSiteName(site);
+    return {
+        key: normalized.replaceAll(" ", "-") || "default",
+        ...(LIVE_SITE_IDENTITIES[normalized] || DEFAULT_LIVE_SITE_IDENTITY)
+    };
+}
+
+function rankingScoreWidth(score, leaderScore) {
+    const numericScore = Number(score || 0);
+    const numericLeader = Number(leaderScore || 0);
+
+    if (numericLeader <= 0 || numericScore <= 0) {
+        return 0;
+    }
+
+    return Math.max(0, Math.min(100, (numericScore / numericLeader) * 100));
+}
+
+function rankingRowKey(item, index = 0) {
+    return String(
+        item?.participant_code
+        || item?.codigo_participante
+        || item?.id_participante
+        || item?.sede
+        || item?.nombre
+        || index
+    );
+}
+
+function prefersReducedMotion() {
+    return Boolean(
+        window.matchMedia
+        && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+}
+
+function rankingHasEntries(rankingData) {
+    return Array.isArray(rankingData?.ranking) && rankingData.ranking.length > 0;
+}
+
+function podiumCelebrationActive(state, reducedMotion = prefersReducedMotion()) {
+    return !reducedMotion && ["PRIMER_LUGAR", "COMPLETO"].includes(state);
+}
+
+function podiumConfettiMarkup(count = 36, random = Math.random) {
+    const colors = [
+        "#fbbf24",
+        "#22c55e",
+        "#38bdf8",
+        "#ef4444",
+        "#a855f7",
+        "#f97316"
+    ];
+
+    return Array.from({length: count}, () => {
+        const x = (2 + random() * 96).toFixed(2);
+        const delay = (-random() * 7).toFixed(2);
+        const duration = (4.8 + random() * 3.6).toFixed(2);
+        const drift = Math.round(-180 + random() * 360);
+        const rotation = Math.round(420 + random() * 960);
+        const size = Math.round(6 + random() * 7);
+        const color = colors[Math.floor(random() * colors.length) % colors.length];
+        const radius = random() > 0.5 ? "50%" : "2px";
+        return (
+            `<span style="--x:${x}%;--delay:${delay}s;--duration:${duration}s;`
+            + `--drift:${drift}px;--rotation:${rotation}deg;--size:${size}px;`
+            + `--confetti-color:${color};--confetti-radius:${radius}"></span>`
+        );
+    }).join("");
+}
+
+function renderRanking(target, rankingData) {
+    const ranking = Array.isArray(rankingData?.ranking) ? rankingData.ranking : [];
+    const leaderScore = Math.max(0, ...ranking.map(item => Number(item.puntaje || 0)));
+    const medals = ["🥇", "🥈", "🥉"];
+    target.dataset.rankingSize = String(ranking.length);
+    target.classList.toggle("ranking-is-dense", ranking.length >= 5);
+
+    if (!rankingHasEntries(rankingData)) {
+        target.innerHTML = "<div class='text-secondary ranking-empty'>Sin puntajes registrados.</div>";
+        return;
+    }
+
+    target.querySelector(".ranking-empty")?.remove();
+
+    const previousRows = new Map(
+        [...target.querySelectorAll("[data-ranking-key]")].map(row => [
+            row.dataset.rankingKey,
+            {row, top: row.getBoundingClientRect().top}
+        ])
+    );
+    const activeKeys = new Set();
+
+    ranking.forEach((item, index) => {
+        const key = rankingRowKey(item, index);
+        const existing = previousRows.get(key);
+        const row = existing?.row || document.createElement("div");
+        const identity = teamSiteIdentity(item.sede);
+        const score = Number(item.puntaje || 0);
+        const scoreWidth = rankingScoreWidth(score, leaderScore);
+        const members = teamMembersInlineText(item.integrantes);
+        activeKeys.add(key);
+        row.className = "ranking-row podium-row";
+        row.dataset.rankingKey = key;
+        row.dataset.siteIdentity = identity.key;
+        row.style.setProperty("--score-width", `${scoreWidth}%`);
+        row.style.setProperty("--site-accent", identity.accent);
+        row.style.setProperty("--site-tint", identity.tint);
+        row.style.setProperty("--site-detail", identity.detail);
+
+        if (!existing) {
+            row.innerHTML = `
+                <div class="ranking-row-head">
+                    <div class="ranking-team-copy">
+                        <strong class="ranking-site"></strong>
+                        <small class="ranking-name"></small>
+                        <small class="ranking-members"></small>
+                    </div>
+                    <span class="ranking-score"></span>
                 </div>
-                <span>${Number(item.puntaje || 0)} pts</span>
+                <div class="ranking-bar"><span></span></div>
+            `;
+        }
+
+        row.querySelector(".ranking-site").textContent = (
+            `${medals[index] || `${index + 1}.`} ${item.sede || item.nombre || "Equipo"}`
+        );
+        row.querySelector(".ranking-name").textContent = item.nombre || "";
+        row.querySelector(".ranking-members").textContent = members;
+        row.querySelector(".ranking-members").classList.toggle("d-none", !members);
+        if (members) {
+            row.querySelector(".ranking-members").title = members;
+            row.querySelector(".ranking-members").setAttribute(
+                "aria-label",
+                `Integrantes: ${members}`
+            );
+        } else {
+            row.querySelector(".ranking-members").removeAttribute("title");
+            row.querySelector(".ranking-members").removeAttribute("aria-label");
+        }
+        row.querySelector(".ranking-score").textContent = `${score} pts`;
+        row.querySelector(".ranking-bar").setAttribute(
+            "aria-label",
+            `Progreso relativo: ${Math.round(scoreWidth)} %`
+        );
+        target.appendChild(row);
+
+        if (existing && !prefersReducedMotion() && typeof row.animate === "function") {
+            const delta = existing.top - row.getBoundingClientRect().top;
+
+            if (Math.abs(delta) > 1) {
+                row.animate(
+                    [
+                        {transform: `translateY(${delta}px)`},
+                        {transform: "translateY(0)"}
+                    ],
+                    {duration: 420, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)"}
+                );
+            }
+        } else if (!existing) {
+            row.classList.add("ranking-row-entering");
+        }
+    });
+
+    previousRows.forEach(({row}, key) => {
+        if (!activeKeys.has(key)) {
+            row.remove();
+        }
+    });
+}
+
+function nextPodiumState(currentState, direction = 1) {
+    const currentIndex = Math.max(0, PODIUM_STATE_ORDER.indexOf(currentState));
+    const nextIndex = Math.max(
+        0,
+        Math.min(PODIUM_STATE_ORDER.length - 1, currentIndex + direction)
+    );
+    return PODIUM_STATE_ORDER[nextIndex];
+}
+
+function renderSynchronizedPodium(
+        target,
+        rankingData,
+        podiumState = {estado: "OCULTO", revision: 0},
+        options = {}
+) {
+    const ranking = (rankingData?.ranking || []).slice(0, 3);
+    const medals = ["&#129351;", "&#129352;", "&#129353;"];
+    const signature = ranking.map((item, index) => (
+        [
+            rankingRowKey(item, index),
+            item.sede || "",
+            item.nombre || "",
+            item.integrantes || "",
+            Number(item.puntaje || 0)
+        ].join(":")
+    )).join("|");
+    let view = target.querySelector(".final-podium-view");
+
+    if (!view || view.dataset.rankingSignature !== signature) {
+        const podiumItems = ranking.map((item, index) => ({
+            ...item,
+            place: index + 1,
+            medal: medals[index],
+            identity: teamSiteIdentity(item.sede)
+        }));
+        const confetti = podiumConfettiMarkup();
+
+        target.innerHTML = `
+            <div class="final-podium-view" data-ranking-signature="${escapeHtml(signature)}" aria-live="polite">
+                <div class="css-confetti" aria-hidden="true">${confetti}</div>
+                <div class="podium-intro">
+                    <span>Resultados finales</span>
+                    <strong>El podio está listo</strong>
+                </div>
+                <div class="podium-stage">
+                    ${podiumItems.map(item => `
+                        <div class="podium-place podium-place-${item.place}" data-place="${item.place}" data-site-identity="${item.identity.key}" style="--site-accent:${item.identity.accent};--site-detail:${item.identity.detail}">
+                            <div class="podium-medal">${item.medal}</div>
+                            <strong>${escapeHtml(item.sede || item.nombre || "Equipo")}</strong>
+                            <small>${escapeHtml(item.nombre || "")}</small>
+                            ${teamMembersListHtml(item.integrantes)}
+                            <span>${Number(item.puntaje || 0)} pts</span>
+                            <div class="podium-block"></div>
+                        </div>
+                    `).join("")}
+                </div>
             </div>
-            <div class="ranking-bar" aria-hidden="true"><span></span></div>
-        </div>
-    `).join("") || "<div class='text-secondary'>Sin puntajes registrados.</div>";
+        `;
+        view = target.querySelector(".final-podium-view");
+    }
+
+    const state = PODIUM_STATE_ORDER.includes(podiumState?.estado)
+        ? podiumState.estado
+        : "OCULTO";
+    const revealThrough = {
+        OCULTO: 0,
+        TERCER_LUGAR: 3,
+        SEGUNDO_LUGAR: 2,
+        PRIMER_LUGAR: 1,
+        COMPLETO: 1
+    }[state];
+    view.dataset.podiumState = state;
+    view.dataset.podiumRevision = String(podiumState?.revision || 0);
+    view.classList.toggle("podium-started", state !== "OCULTO");
+    view.classList.toggle(
+        "podium-instant",
+        state === "COMPLETO" || options.animate === false || prefersReducedMotion()
+    );
+    const celebrationActive = podiumCelebrationActive(state);
+    view.classList.toggle("podium-celebrating", celebrationActive);
+    view.querySelectorAll("[data-place]").forEach(place => {
+        place.classList.toggle(
+            "podium-revealed",
+            revealThrough > 0 && Number(place.dataset.place) >= revealThrough
+        );
+    });
+
+    if (options.celebrate && celebrationActive) {
+        playSound("celebrate", {volume: 0.5});
+    }
 }
 
 function renderAnimatedPodium(target, rankingData) {
-    const ranking = (rankingData?.ranking || []).slice(0, 3);
-    const medals = ["&#129351;", "&#129352;", "&#129353;"];
-    const podiumItems = ranking.map((item, index) => ({
-        ...item,
-        place: index + 1,
-        medal: medals[index]
-    }));
-    const confetti = Array.from({length: 16}, (_, index) => (
-        `<span style="--x:${(index % 8) * 12 + 4}%;--delay:${(index % 6) * 0.18}s"></span>`
-    )).join("");
-
-    target.innerHTML = `
-        <div class="final-podium-view" data-podium-step="0" role="button" tabindex="0" aria-label="Avanzar premiacion">
-            <div class="css-confetti" aria-hidden="true">${confetti}</div>
-            <div class="podium-intro">
-                <span>Resultados finales</span>
-                <strong>Haz clic para revelar el podio</strong>
-            </div>
-            <div class="podium-stage">
-                ${podiumItems.map(item => `
-                    <div class="podium-place podium-place-${item.place}" data-place="${item.place}">
-                        <div class="podium-medal">${item.medal}</div>
-                        <strong>${escapeHtml(item.sede || item.nombre || "Equipo")}</strong>
-                        <small>${escapeHtml(item.nombre || "")}</small>
-                        <span>${Number(item.puntaje || 0)} pts</span>
-                        <div class="podium-block"></div>
-                    </div>
-                `).join("")}
-            </div>
-        </div>
-    `;
-
-    const view = target.querySelector(".final-podium-view");
-    const revealOrder = [3, 2, 1].filter(place => view.querySelector(`[data-place="${place}"]`));
-
-    function advancePodium() {
-        const currentStep = Number(view.dataset.podiumStep || 0);
-
-        if (currentStep >= revealOrder.length) {
-            return;
-        }
-
-        const nextStep = currentStep + 1;
-        const place = revealOrder[currentStep];
-        const podiumPlace = view.querySelector(`[data-place="${place}"]`);
-        view.dataset.podiumStep = String(nextStep);
-        view.classList.toggle("podium-started", nextStep > 0);
-
-        if (podiumPlace) {
-            podiumPlace.classList.add("podium-revealed");
-        }
-
-        if (place === 1 && podiumPlace) {
-            view.classList.add("podium-champion-shown");
-            playSound("celebrate", {volume: 0.5});
-        }
-    }
-
-    view.addEventListener("click", advancePodium);
-    view.addEventListener("keydown", event => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            advancePodium();
-        }
-    });
+    renderSynchronizedPodium(
+        target,
+        rankingData,
+        {estado: "OCULTO", revision: 0},
+        {animate: false}
+    );
 }
 
 function renderTimer(target, timer, progressTarget = null) {
