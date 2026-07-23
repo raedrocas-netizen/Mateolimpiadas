@@ -4082,6 +4082,14 @@ html[data-theme="light"] .queue-active .queue-team {
     font-size: clamp(1.45rem, 2.5vw, 2.4rem);
 }
 
+.display-podium-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 .display-podium-stage,
 .display-podium-stage .final-podium-view {
     width: 100%;
@@ -4739,6 +4747,11 @@ body.participant-page:has(.participant-view.podium-mode) .theme-toggle {
 
     .display-podium-heading .podium-controls {
         width: 100%;
+    }
+
+    .display-podium-actions {
+        width: 100%;
+        justify-content: flex-start;
     }
 }
 
