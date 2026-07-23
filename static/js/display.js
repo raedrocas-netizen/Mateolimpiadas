@@ -595,12 +595,38 @@ function joinDisplayRoom() {
     displaySocket.emit("display_unirse", {codigo_partida: displayCode});
 }
 
+function connectDisplayToAnotherRoom() {
+    displayCode = "";
+    displayTotalQuestions = null;
+    displayCurrentQuestion = null;
+    displayState = {};
+    displayRankingData = {ranking: []};
+    displayRequests = [];
+    displayPaused = false;
+    suppressDisplayTimeupUntil = 0;
+    displayPodiumState = {estado: "OCULTO", revision: 0};
+    displayPodiumHydrated = false;
+    displayPodiumCelebrated = false;
+    displayParticipants.clear();
+    displayForm.elements.codigo_partida.value = "";
+
+    displaySocket.removeAllListeners();
+    displaySocket.disconnect();
+    displayLivePanel.classList.add("d-none");
+    displayJoinPanel.classList.remove("d-none");
+    window.location.assign("/display");
+}
+
 document.getElementById("displayPodiumPrevious")?.addEventListener("click", () => {
     requestDisplayPodiumState(-1);
 });
 document.getElementById("displayPodiumNext")?.addEventListener("click", () => {
     requestDisplayPodiumState(1);
 });
+document.getElementById("displayConnectAnotherRoom")?.addEventListener(
+    "click",
+    connectDisplayToAnotherRoom
+);
 displayPodiumStage.addEventListener("click", event => {
     if (event.target.closest("button")) {
         return;
